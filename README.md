@@ -1,2 +1,144 @@
-# jood
-استراحة الجود
+# استراحة الجود | Jood Rest
+
+كتالوج ونظام حجوزات لاستراحة الجود في العزيزية بالخبر، المملكة العربية السعودية.
+
+> **الحالة الحالية:** المرحلة الأولى (البنية الأساسية) مكتملة. الصفحات العامة ما زالت هيكلًا مبدئيًا، والحجوزات والدفع ولوحة الإدارة وبوابة الضيف لم تُنفَّذ بعد. راجع [خطة المراحل](#خطة-المراحل).
+
+## التقنيات
+
+| الطبقة | التقنية |
+|---|---|
+| الواجهة | React 19، TypeScript، Vite، Tailwind CSS 4، React Router 7 (RTL بالكامل) |
+| الخادم | Node.js 22، Express 5، TypeScript، Zod، Helmet، express-rate-limit |
+| قاعدة البيانات | PostgreSQL 16 عبر Prisma ORM 6 و Prisma migrations |
+| الاختبارات | Vitest، Supertest، Testing Library |
+| النشر | GitHub ← Render (Web Service + PostgreSQL) |
+
+## بنية المشروع
+
+```
+jood/
+├── client/                 # واجهة React (Vite)
+│   ├── src/components/     # Layout، LogoSlot (مكان الشعار)
+│   ├── src/pages/          # صفحات الكتالوج
+│   └── src/styles/         # الهوية البصرية (ألوان وخطوط)
+├── server/                 # خادم Express
+│   ├── prisma/             # schema.prisma و migrations
+│   ├── src/config/env.ts   # التحقق من متغيرات البيئة
+│   ├── src/routes/         # REST API
+│   └── tests/              # اختبارات الخادم (على قاعدة بيانات حقيقية)
+├── render.yaml             # إعداد النشر على Render (Blueprint)
+├── .github/workflows/ci.yml
+└── .env.example
+```
+
+في الإنتاج يعمل تطبيق واحد: خادم Express يقدّم الـ API تحت `/api` ويقدّم ملفات الواجهة المبنية من `client/dist`.
+
+## التشغيل المحلي
+
+### المتطلبات
+
+- Node.js 22 (أو 20.19 فأحدث) و npm
+- PostgreSQL 16
+
+### الخطوات
+
+```bash
+# 1) تثبيت الحزم
+npm ci
+
+# 2) إنشاء قاعدتي بيانات للتطوير والاختبار
+sudo -u postgres psql -c "CREATE USER jood WITH PASSWORD 'كلمة_مرور_قوية' CREATEDB;"
+sudo -u postgres psql -c "CREATE DATABASE jood_dev OWNER jood;"
+sudo -u postgres psql -c "CREATE DATABASE jood_test OWNER jood;"
+
+# 3) متغيرات البيئة
+cp .env.example server/.env              # ثم عدّل DATABASE_URL و SESSION_SECRET
+cp server/.env.test.example server/.env.test
+
+# 4) تطبيق migrations
+npm run db:migrate -w server
+
+# 5) التشغيل (الخادم على 4000 والواجهة على 5173)
+npm run dev
+```
+
+افتح `http://localhost:5173`. فحص الخادم: `http://localhost:4000/api/health`.
+
+### الأوامر
+
+| الأمر | الوظيفة |
+|---|---|
+| `npm run dev` | تشغيل الخادم والواجهة معًا للتطوير |
+| `npm run build` | بناء الخادم والواجهة للإنتاج |
+| `npm start` | تشغيل نسخة الإنتاج المبنية |
+| `npm run typecheck` | فحص الأنواع |
+| `npm test` | تشغيل جميع الاختبارات |
+| `npm run db:migrate -w server` | إنشاء migration جديدة وتطبيقها (تطوير) |
+| `npm run db:deploy -w server` | تطبيق migrations الموجودة (إنتاج) |
+
+> **ملاحظة عن npm:** يتعطل `npm install` في npm 10.9 بخلل داخلي (`Cannot read properties of null (reading 'edgesOut')`) عند حل الاعتماديات. استخدم `npm ci` الذي يعمل مع npm 10 لأنه يقرأ ملف القفل. لتحديث الحزم استخدم `npx npm@11 install`.
+
+## قاعدة البيانات
+
+- المخطط: `server/prisma/schema.prisma`.
+- يحتوي حاليًا على جدول `site_settings` فقط (إعدادات الموقع بصيغة مفتاح ← JSON). بقية الجداول (Users وGuests وBookings وPayments وغيرها) تُضاف في المرحلة الثالثة.
+- كل تعديل على المخطط يكون عبر `prisma migrate dev` ويُرفع مجلد `prisma/migrations` إلى GitHub.
+- تعمل الاختبارات على قاعدة `jood_test` منفصلة. وتتوقف الاختبارات إن لم يحتوِ `DATABASE_URL` على كلمة `test`، حتى لا تمس بيانات حقيقية.
+
+## النشر على Render
+
+يتضمن المستودع ملف `render.yaml` (Blueprint) يُنشئ:
+
+1. **Web Service** `jood-rest`
+   - Build: `npm ci --include=dev && npm run build`
+   - Start: `npm run start:render`، الذي يطبّق `prisma migrate deploy` ثم يشغّل الخادم
+   - Health check: `/api/health`، ويعيد 200 فقط عندما تكون قاعدة البيانات متصلة
+   - نشر تلقائي عند كل commit على الفرع المرتبط
+2. **PostgreSQL** `jood-db` (الإصدار 16، منطقة فرانكفورت، الأقرب بين مناطق Render للخليج)
+
+### الخطوات
+
+1. ادمج هذا الفرع في `main`.
+2. في Render: **New → Blueprint** ثم اختر مستودع `malbusaad/jood`.
+3. عند الطلب، أدخل `PUBLIC_BASE_URL` (مثل `https://jood-rest.onrender.com`، أو نطاقك الخاص).
+4. يولّد Render قيمة `SESSION_SECRET` تلقائيًا ويربط `DATABASE_URL` بقاعدة البيانات.
+
+### تنبيه عن الخطط والتكلفة
+
+- **PostgreSQL المجانية في Render تنتهي بعد 30 يومًا** وتُحذف بياناتها، لذلك يستخدم الملف خطة `basic-256mb` المدفوعة حتى تبقى الحجوزات محفوظة.
+- خطة الخادم `starter` مدفوعة. الخطة المجانية تتوقف عند عدم الاستخدام وتتأخر في أول طلب بعدها.
+- يمكنك تغيير الخطط من `render.yaml` أو من لوحة Render قبل التأكيد.
+- **تخزين الصور والفيديو:** نظام ملفات Render مؤقت، لذلك ستُحفظ الوسائط في خدمة تخزين خارجية تُضبط في مرحلة لاحقة.
+
+## الأمان
+
+- لا تُرفع ملفات `.env` أو أي أسرار. كل الإعدادات الحساسة متغيرات بيئة (`.env.example` يوضحها دون قيم حقيقية).
+- يرفض الخادم التشغيل إذا كانت متغيرات البيئة ناقصة أو `SESSION_SECRET` أقصر من 32 حرفًا، ورسالة الخطأ لا تعرض القيم.
+- مفعّل حاليًا: Helmet (ومنه CSP و`frame-ancestors 'none'`)، وحد معدل الطلبات على `/api`، وحد لحجم الطلب، ورسائل خطأ لا تكشف التفاصيل الداخلية.
+- لا يوجد حساب إداري افتراضي. آلية إنشاء أول حساب للمالك تأتي مع نظام الصلاحيات في المرحلة الثالثة.
+
+## خطة المراحل
+
+| # | المرحلة | الحالة |
+|---|---|---|
+| 1 | البنية الأساسية (React وExpress وTypeScript وPrisma وPostgreSQL وCI وRender) | ✅ مكتملة |
+| 2 | التصميم والواجهة العامة | ⏳ |
+| 3 | قاعدة البيانات والخادم والصلاحيات | ⏳ |
+| 4 | الحجوزات (الكاملة والجزئية) ومنع التعارض | ⏳ |
+| 5 | الدفع (التحويل البنكي وجاذر إن) | ⏳ |
+| 6 | لوحة الإدارة | ⏳ |
+| 7 | بوابة الضيف | ⏳ |
+| 8 | الاختبارات الشاملة | ⏳ |
+| 9 | النشر على Render | ⏳ |
+
+## بيانات مطلوبة من المالك
+
+هذه البيانات لن تُخترع، وستكون لها حقول في لوحة الإدارة:
+
+- الشعار الرسمي (يوجد حاليًا مكان مخصص له فقط)
+- صور الاستراحة الحقيقية والفيديو التعريفي
+- بيانات الحساب البنكي (البنك، اسم صاحب الحساب، الآيبان)
+- رابط جاذر إن الرسمي
+- بيانات التواصل
+- أسعار الحجوزات الجزئية لكل جزء

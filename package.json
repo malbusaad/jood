@@ -1,0 +1,26 @@
+{
+  "name": "jood-rest",
+  "private": true,
+  "description": "كتالوج وحجوزات استراحة الجود | Jood Rest",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,client -c green,yellow \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w server && npm run build -w client",
+    "start": "npm run start -w server",
+    "start:render": "npm run db:deploy -w server && npm run start -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+    "test": "npm run test -w server && npm run test -w client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0"
+  }
+}

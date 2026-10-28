@@ -1,0 +1,38 @@
+# Render Blueprint — استراحة الجود
+# النشر: Render Dashboard → New → Blueprint → اختر مستودع jood.
+# ملاحظة: خطة PostgreSQL المجانية في Render تنتهي بعد 30 يومًا، لذلك اخترنا خطة مدفوعة
+# لضمان بقاء بيانات الحجوزات. راجع README قبل النشر.
+
+services:
+  - type: web
+    name: jood-rest
+    runtime: node
+    plan: starter
+    region: frankfurt
+    buildCommand: npm ci --include=dev && npm run build
+    # يطبّق Prisma migrations ثم يشغّل الخادم (الخادم يقدّم الواجهة أيضًا)
+    startCommand: npm run start:render
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: jood-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      # الرابط العام للموقع، مثل https://jood-rest.onrender.com — يُطلب عند إنشاء الخدمة
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+databases:
+  - name: jood-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: jood
+    user: jood
+    postgresMajorVersion: "16"

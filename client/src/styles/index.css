@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+/* هوية استراحة الجود */
+@theme {
+  --color-jood-green: #183b32;
+  --color-jood-green-800: #1f4a3f;
+  --color-jood-green-950: #0f2620;
+  --color-jood-gold: #c4a46b;
+  --color-jood-gold-light: #d9c39a;
+  --color-jood-beige: #f5f0e6;
+  --color-jood-ink: #1d2422;
+
+  --font-sans: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-display: "El Messiri", "IBM Plex Sans Arabic", serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-jood-beige text-jood-ink font-sans antialiased;
+  }
+  h1, h2, h3 {
+    @apply font-display;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-jood-gold);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

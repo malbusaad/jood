@@ -1,0 +1,22 @@
+// استراحة الجود — مخطط قاعدة البيانات (PostgreSQL)
+// المرحلة الأولى: البنية الأساسية فقط. بقية الجداول (الحجوزات، المرافق، الدفعات...)
+// تُضاف في المرحلة الثالثة عبر Prisma migrations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// إعدادات الموقع القابلة للتعديل من لوحة الإدارة (مفتاح ← قيمة JSON).
+/// مثال: أوقات الدخول والخروج، رابط جاذر إن، بيانات التواصل.
+model SiteSetting {
+  key       String   @id @db.VarChar(100)
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("site_settings")
+}
