@@ -1,5 +1,8 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
+
+// Lazy-loaded pages compile on first import in the test environment, which can exceed the 1s default.
+configure({ asyncUtilTimeout: 5000 });
 
 afterEach(cleanup);

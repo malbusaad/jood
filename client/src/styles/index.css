@@ -35,3 +35,38 @@
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* تقويم الأسعار (react-day-picker) */
+.jood-calendar .rdp-root {
+  --rdp-accent-color: var(--color-jood-green);
+  --rdp-accent-background-color: color-mix(in srgb, var(--color-jood-gold) 20%, transparent);
+  --rdp-day-height: 3.25rem;
+  --rdp-day-width: 3rem;
+  --rdp-today-color: var(--color-jood-green);
+  --rdp-nav_button-height: 2.25rem;
+  --rdp-nav_button-width: 2.25rem;
+  font-family: var(--font-sans);
+  margin-inline: auto;
+}
+.jood-calendar .rdp-month_caption {
+  font-family: var(--font-display);
+  color: var(--color-jood-green);
+}
+.jood-calendar .rdp-chevron { fill: var(--color-jood-gold); }
+.jood-calendar .rdp-weekday { color: color-mix(in srgb, var(--color-jood-ink) 55%, transparent); font-size: 0.75rem; }
+.jood-calendar .jood-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 2px auto;
+  width: calc(var(--rdp-day-width) - 4px);
+  height: calc(var(--rdp-day-height) - 4px);
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+}
+.jood-calendar .jood-peak:not(.rdp-disabled) .jood-day {
+  background: color-mix(in srgb, var(--color-jood-gold) 22%, transparent);
+}
+.jood-calendar .rdp-today .jood-day { outline: 1px solid var(--color-jood-gold); font-weight: 600; }
+.jood-calendar .rdp-disabled { opacity: 0.35; }

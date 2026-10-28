@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router";
 import LogoSlot from "./LogoSlot";
+import ScrollToTop from "./ScrollToTop";
+import { useSiteContent } from "../hooks/useSiteContent";
 import { publicPages } from "../routes";
 
 const headerLinks = publicPages.filter((p) =>
@@ -9,11 +11,16 @@ const headerLinks = publicPages.filter((p) =>
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
+  const site = useSiteContent();
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-40 bg-jood-green/95 text-jood-beige backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+      <ScrollToTop />
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:right-2 focus:z-50 focus:rounded-md focus:bg-jood-gold focus:px-4 focus:py-2 focus:text-jood-green-950">
+        انتقل إلى المحتوى
+      </a>
+      <header className="sticky top-0 z-40 border-b border-white/5 bg-jood-green-950/90 text-jood-beige backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <Link to="/" onClick={() => setOpen(false)}>
             <LogoSlot />
           </Link>
@@ -33,7 +40,7 @@ export default function Layout() {
             ))}
             <Link
               to="/booking"
-              className="rounded-full bg-jood-gold px-5 py-2 text-sm font-medium text-jood-green transition hover:bg-jood-gold-light"
+              className="rounded-full bg-jood-gold px-5 py-2 text-sm font-medium text-jood-green-950 transition hover:bg-jood-gold-light"
             >
               احجز الآن
             </Link>
@@ -70,15 +77,19 @@ export default function Layout() {
         )}
       </header>
 
-      <main className="flex-1">
-        <Outlet />
+      <main id="main" className="flex-1">
+        <Suspense fallback={<div className="min-h-[60dvh]" aria-busy="true" />}>
+          <Outlet />
+        </Suspense>
       </main>
 
       <footer className="bg-jood-green-950 text-jood-beige/80">
         <div className="mx-auto grid max-w-6xl gap-6 px-4 py-10 sm:grid-cols-2">
           <div>
             <LogoSlot className="text-jood-beige" />
-            <p className="mt-3 text-sm">العزيزية، الخبر — المملكة العربية السعودية</p>
+            <p className="mt-3 text-sm">
+              {site.location.district}، {site.location.city} — {site.location.country}
+            </p>
           </div>
           <nav className="grid grid-cols-2 gap-2 text-sm" aria-label="روابط التذييل">
             {publicPages.map((p) => (
@@ -89,7 +100,7 @@ export default function Layout() {
           </nav>
         </div>
         <p className="border-t border-white/10 py-4 text-center text-xs">
-          © {new Date().getFullYear()} استراحة الجود
+          © {new Date().getFullYear()} {site.name}
         </p>
       </footer>
     </div>
