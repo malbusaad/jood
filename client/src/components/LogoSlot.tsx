@@ -5,7 +5,7 @@ import { useSiteContent } from "../hooks/useSiteContent";
  * لن يُنشأ شعار نهائي دون موافقة المالك؛ يُرفع الشعار من لوحة الإدارة.
  */
 export default function LogoSlot({ className = "" }: { className?: string }) {
-  const { name, media } = useSiteContent();
+  const { general, media } = useSiteContent();
   return (
     <span className={`inline-flex items-center gap-3 ${className}`}>
       {media.logoUrl ? (
@@ -19,7 +19,7 @@ export default function LogoSlot({ className = "" }: { className?: string }) {
           الشعار
         </span>
       )}
-      <span className="font-display text-xl font-semibold tracking-wide">{name}</span>
+      <span className="font-display text-xl font-semibold tracking-wide">{general.name}</span>
     </span>
   );
 }

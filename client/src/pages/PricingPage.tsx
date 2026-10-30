@@ -11,7 +11,7 @@ export default function PricingPage() {
     <>
       <PageHeader title="الأسعار">أسعار حجز الاستراحة كاملة لليوم بالريال السعودي.</PageHeader>
       <section className="mx-auto max-w-6xl space-y-16 px-4 py-16">
-        <PricingCards prices={site.fullRestPrices} />
+        <PricingCards weekdayPrices={site.weekdayPrices} />
 
         <div className="grid gap-12 lg:grid-cols-2">
           <div>
@@ -33,7 +33,7 @@ export default function PricingPage() {
               احجز الآن
             </Link>
           </div>
-          <PriceCalendar prices={site.fullRestPrices} />
+          <PriceCalendar />
         </div>
       </section>
     </>

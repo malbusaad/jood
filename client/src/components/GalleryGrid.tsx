@@ -1,5 +1,5 @@
 import MediaPlaceholder from "./MediaPlaceholder";
-import type { GalleryImage } from "../content/site";
+import type { GalleryImage } from "../content/types";
 
 /** شبكة الصور. عند عدم وجود صور مرفوعة تُعرض أماكن مخصصة لها. */
 export default function GalleryGrid({ images, placeholders = 6 }: { images: GalleryImage[]; placeholders?: number }) {

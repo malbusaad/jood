@@ -1,6 +1,6 @@
 import { Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import PendingNotice from "./PendingNotice";
-import type { SiteContent } from "../content/site";
+import type { SiteContent } from "../content/types";
 
 export default function ContactDetails({ site }: { site: SiteContent }) {
   const { phone, whatsapp, email, mapUrl } = site.contact;
@@ -10,7 +10,7 @@ export default function ContactDetails({ site }: { site: SiteContent }) {
     <div className="space-y-4">
       <p className={row}>
         <MapPin aria-hidden className="size-5 text-jood-gold" />
-        {site.location.district}، {site.location.city} — {site.location.country}
+        {site.general.location.district}، {site.general.location.city} — {site.general.location.country}
         {mapUrl && (
           <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="underline decoration-jood-gold underline-offset-4">
             الموقع على الخريطة

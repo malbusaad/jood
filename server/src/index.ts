@@ -9,7 +9,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const clientDistDir = path.resolve(here, "../../client/dist");
 
 await prisma.$connect();
-const app = createApp({ db: prisma, clientDistDir });
+const app = createApp({
+  db: prisma,
+  clientDistDir,
+  secureCookies: env.NODE_ENV === "production",
+  allowedOrigins: [new URL(env.PUBLIC_BASE_URL).origin],
+});
 
 const server = app.listen(env.PORT, () => {
   console.log(`[jood] server listening on port ${env.PORT} (${env.NODE_ENV})`);

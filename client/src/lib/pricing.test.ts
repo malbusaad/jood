@@ -1,27 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { baseFullRestPrice, isThuToSat } from "./pricing";
+import { groupWeekdayPrices } from "./pricing";
 import { formatSAR, formatTimeAr } from "./format";
 
-const prices = { sunToWed: 950, thuToSat: 1200 };
-// 2026-11-01 is a Sunday.
-const day = (offset: number) => new Date(2026, 10, 1 + offset);
-
-describe("baseFullRestPrice", () => {
-  it.each([
-    [0, "Sunday", 950],
-    [1, "Monday", 950],
-    [2, "Tuesday", 950],
-    [3, "Wednesday", 950],
-    [4, "Thursday", 1200],
-    [5, "Friday", 1200],
-    [6, "Saturday", 1200],
-  ])("offset %i (%s) → %i SAR", (offset, _name, expected) => {
-    expect(day(offset).getDay()).toBe(offset);
-    expect(baseFullRestPrice(day(offset), prices)).toBe(expected);
+describe("groupWeekdayPrices", () => {
+  it("groups the approved prices into Sun–Wed and Thu–Sat", () => {
+    expect(groupWeekdayPrices([950, 950, 950, 950, 1200, 1200, 1200])).toEqual([
+      { label: "الأحد إلى الأربعاء", price: 950, days: [0, 1, 2, 3] },
+      { label: "الخميس إلى السبت", price: 1200, days: [4, 5, 6] },
+    ]);
   });
 
-  it("flags Thursday–Saturday only", () => {
-    expect([0, 1, 2, 3, 4, 5, 6].map((o) => isThuToSat(day(o)))).toEqual([false, false, false, false, true, true, true]);
+  it("follows whatever the owner sets, including single days", () => {
+    expect(groupWeekdayPrices([900, 900, 900, 900, 1100, 1300, 1100]).map((g) => [g.label, g.price])).toEqual([
+      ["الأحد إلى الأربعاء", 900],
+      ["الخميس", 1100],
+      ["الجمعة", 1300],
+      ["السبت", 1100],
+    ]);
+  });
+
+  it("leaves out days without an approved price", () => {
+    expect(groupWeekdayPrices([null, null, null, null, 1200, 1200, null])).toEqual([
+      { label: "الخميس إلى الجمعة", price: 1200, days: [4, 5] },
+    ]);
+    expect(groupWeekdayPrices([null, null, null, null, null, null, null])).toEqual([]);
   });
 });
 

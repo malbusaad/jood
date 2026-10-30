@@ -13,11 +13,16 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "node dist/scripts/seed.js",
+    "db:seed:dev": "tsx --env-file-if-exists=.env src/scripts/seed.ts",
+    "create-owner": "node dist/scripts/create-owner.js",
+    "create-owner:dev": "tsx --env-file-if-exists=.env src/scripts/create-owner.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
     "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
@@ -26,6 +31,7 @@
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",
+    "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.3",
     "@types/node": "^22.18.0",
     "@types/supertest": "^6.0.3",

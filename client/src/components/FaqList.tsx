@@ -1,5 +1,5 @@
 import { ChevronDown } from "lucide-react";
-import type { Faq } from "../content/site";
+import type { Faq } from "../content/types";
 
 export default function FaqList({ faqs }: { faqs: Faq[] }) {
   return (

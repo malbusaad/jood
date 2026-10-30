@@ -30,9 +30,9 @@ export default function HomePage() {
   const site = useSiteContent();
 
   const facts = [
-    { Icon: MapPin, label: "الموقع", value: `${site.location.district}، ${site.location.city}` },
-    { Icon: Clock, label: "الدخول", value: formatTimeAr(site.checkIn) },
-    { Icon: Moon, label: "الخروج", value: formatTimeAr(site.checkOut) },
+    { Icon: MapPin, label: "الموقع", value: `${site.general.location.district}، ${site.general.location.city}` },
+    { Icon: Clock, label: "الدخول", value: formatTimeAr(site.stay.checkIn) },
+    { Icon: Moon, label: "الخروج", value: formatTimeAr(site.stay.checkOut) },
   ];
 
   return (
@@ -60,13 +60,13 @@ export default function HomePage() {
         )}
         <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-6xl flex-col justify-center px-4 py-20">
           <Reveal>
-            <p className="text-sm tracking-[0.3em] text-jood-gold">{site.tagline}</p>
+            <p className="text-sm tracking-[0.3em] text-jood-gold">{site.general.tagline}</p>
           </Reveal>
           <Reveal delay={100}>
-            <h1 className="mt-5 max-w-3xl text-5xl leading-[1.15] font-semibold sm:text-7xl">{site.welcome}</h1>
+            <h1 className="mt-5 max-w-3xl text-5xl leading-[1.15] font-semibold sm:text-7xl">{site.general.welcome}</h1>
           </Reveal>
           <Reveal delay={200}>
-            <p className="mt-6 max-w-xl text-lg leading-9 text-jood-beige/80">{site.description}</p>
+            <p className="mt-6 max-w-xl text-lg leading-9 text-jood-beige/80">{site.general.description}</p>
           </Reveal>
           <Reveal delay={300}>
             <div className="mt-10 flex flex-wrap gap-3">
@@ -121,18 +121,18 @@ export default function HomePage() {
               أسعار حجز الاستراحة كاملة لليوم. يظهر لك السعر النهائي وتفاصيله قبل إرسال طلب الحجز.
             </SectionHeading>
             <div className="mt-10">
-              <PricingCards prices={site.fullRestPrices} />
+              <PricingCards weekdayPrices={site.weekdayPrices} />
             </div>
             <div className="mt-8">
               <MoreLink to="/pricing">تفاصيل الأسعار</MoreLink>
             </div>
           </div>
           <div>
-            <SectionHeading eyebrow="التقويم" title="تقويم الأسعار">
-              السعر الأساسي لكل يوم. ستظهر الإتاحة الفعلية هنا عند تفعيل نظام الحجز.
+            <SectionHeading eyebrow="التقويم" title="الأسعار والإتاحة">
+              سعر كل يوم والأيام المحجوزة للاستراحة كاملة.
             </SectionHeading>
             <div className="mt-10">
-              <PriceCalendar prices={site.fullRestPrices} />
+              <PriceCalendar />
             </div>
           </div>
         </div>

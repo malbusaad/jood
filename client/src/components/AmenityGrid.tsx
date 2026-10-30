@@ -1,7 +1,7 @@
 import { Users } from "lucide-react";
 import AmenityIcon from "./AmenityIcon";
 import Reveal from "./Reveal";
-import type { Amenity } from "../content/site";
+import type { Amenity } from "../content/types";
 
 export default function AmenityGrid({ amenities }: { amenities: Amenity[] }) {
   return (
@@ -15,13 +15,16 @@ export default function AmenityGrid({ amenities }: { amenities: Amenity[] }) {
               </span>
               <div>
                 <h3 className="font-display text-lg font-semibold text-jood-green">{a.name}</h3>
-                {a.capacity && (
+                {a.capacityText && (
                   <p className="mt-1 flex items-center gap-1.5 text-sm text-jood-ink/70">
                     <Users aria-hidden className="size-4 text-jood-gold" />
-                    السعة: {a.capacity}
+                    السعة: {a.capacityText}
                   </p>
                 )}
                 {a.note && <p className="mt-1 text-sm text-jood-ink/70">{a.note}</p>}
+                {!a.available && (
+                  <p className="mt-2 inline-block rounded-full bg-jood-ink/5 px-3 py-0.5 text-xs text-jood-ink/60">غير متاح حاليًا</p>
+                )}
               </div>
             </div>
           </Reveal>

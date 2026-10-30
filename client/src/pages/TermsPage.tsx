@@ -16,11 +16,11 @@ export default function TermsPage() {
           <dl className="mt-8 grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl bg-white/80 p-6">
               <dt className="text-sm text-jood-ink/60">الدخول</dt>
-              <dd className="mt-1 font-display text-2xl text-jood-green">{formatTimeAr(site.checkIn)}</dd>
+              <dd className="mt-1 font-display text-2xl text-jood-green">{formatTimeAr(site.stay.checkIn)}</dd>
             </div>
             <div className="rounded-2xl bg-white/80 p-6">
               <dt className="text-sm text-jood-ink/60">الخروج</dt>
-              <dd className="mt-1 font-display text-2xl text-jood-green">{formatTimeAr(site.checkOut)}</dd>
+              <dd className="mt-1 font-display text-2xl text-jood-green">{formatTimeAr(site.stay.checkOut)}</dd>
               <dd className="mt-1 text-xs text-jood-ink/60">من اليوم التالي</dd>
             </div>
           </dl>
@@ -46,7 +46,15 @@ export default function TermsPage() {
             <li>تظهر بيانات التحويل البنكي بعد إرسال طلب الحجز، ولا تُنشر في الصفحات العامة.</li>
             <li>الحجز عبر منصة جاذر إن يخضع لشروط المنصة، وقد تُطبق عليه رسوم إضافية منها.</li>
           </ul>
-          <PendingNotice className="mt-6">سياسة الإلغاء والاسترداد يحددها المالك وستُضاف هنا.</PendingNotice>
+        </div>
+
+        <div>
+          <SectionHeading title="الإلغاء والاسترداد" />
+          {site.cancellationPolicy.text ? (
+            <p className="mt-8 whitespace-pre-line leading-8">{site.cancellationPolicy.text}</p>
+          ) : (
+            <PendingNotice className="mt-8">سياسة الإلغاء والاسترداد يحددها المالك وستُضاف هنا.</PendingNotice>
+          )}
         </div>
       </section>
     </>

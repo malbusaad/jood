@@ -1,6 +1,4 @@
 // استراحة الجود — مخطط قاعدة البيانات (PostgreSQL)
-// المرحلة الأولى: البنية الأساسية فقط. بقية الجداول (الحجوزات، المرافق، الدفعات...)
-// تُضاف في المرحلة الثالثة عبر Prisma migrations.
 
 generator client {
   provider = "prisma-client-js"
@@ -11,12 +9,431 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// إعدادات الموقع القابلة للتعديل من لوحة الإدارة (مفتاح ← قيمة JSON).
-/// مثال: أوقات الدخول والخروج، رابط جاذر إن، بيانات التواصل.
+// ─────────────────────────── المستخدمون والجلسات ───────────────────────────
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+/// حسابات لوحة الإدارة. لا يوجد حساب افتراضي؛ أول مالك يُنشأ بأمر create-owner.
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique @db.VarChar(254)
+  name         String    @db.VarChar(120)
+  /// scrypt hash بصيغة scrypt$N$r$p$salt$hash — لا تُخزَّن كلمة المرور نفسها أبدًا
+  passwordHash String    @map("password_hash")
+  role         UserRole  @default(STAFF)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  sessions          Session[]
+  auditLogs         AuditLog[]
+  verifiedPayments  Payment[]  @relation("PaymentVerifiedBy")
+  confirmedBookings Booking[]  @relation("BookingConfirmedBy")
+
+  @@map("users")
+}
+
+/// جلسات الإدارة. يُخزَّن hash الرمز فقط؛ الرمز نفسه في cookie من نوع httpOnly.
+model Session {
+  id         String   @id @default(uuid()) @db.Uuid
+  tokenHash  String   @unique @map("token_hash") @db.Char(64)
+  userId     String   @map("user_id") @db.Uuid
+  expiresAt  DateTime @map("expires_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  ip         String?  @db.VarChar(64)
+  userAgent  String?  @map("user_agent") @db.VarChar(300)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ─────────────────────────── المرافق والأجزاء القابلة للحجز ───────────────────────────
+
+/// المرافق المعروضة في الكتالوج (الخيمة، المجلس، المطبخ...).
+model Amenity {
+  id           String   @id @default(uuid()) @db.Uuid
+  slug         String   @unique @db.VarChar(60)
+  name         String   @db.VarChar(120)
+  description  String?
+  /// نص السعة كما يكتبه المالك، مثل «12 إلى 15 شخصًا»
+  capacityText String?  @map("capacity_text") @db.VarChar(80)
+  capacityMax  Int?     @map("capacity_max")
+  /// ملاحظة قصيرة مثل «متكامل» أو «العدد: 2»
+  note         String?  @db.VarChar(120)
+  icon         String   @default("outdoor") @db.VarChar(30)
+  sortOrder    Int      @default(0) @map("sort_order")
+  /// إخفاء مؤقت من الموقع العام
+  visible      Boolean  @default(true)
+  /// متاح للاستخدام/الحجز (يوقفه المالك عند الحاجة، مثل الجلسات الخارجية في غير موسمها)
+  available    Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  resources ResourceAmenity[]
+  media     MediaAsset[]
+
+  @@index([sortOrder])
+  @@map("amenities")
+}
+
+enum ResourceKind {
+  /// الاستراحة كاملة
+  FULL
+  /// جزء قابل للحجز المستقل
+  PART
+}
+
+/// وحدة قابلة للحجز: الاستراحة كاملة، أو جزء يحدده المالك (مرفق واحد أو عدة مرافق لا تنفصل).
+///
+/// قاعدة التعارض: يتعارض موردان إذا اشتركا في أي مرفق، أو إذا وُجد بينهما تعارض صريح
+/// في ResourceConflict. الاستراحة كاملة تشمل كل المرافق، فتتعارض تلقائيًا مع كل الأجزاء.
+model BookingResource {
+  id          String       @id @default(uuid()) @db.Uuid
+  slug        String       @unique @db.VarChar(60)
+  name        String       @db.VarChar(120)
+  description String?
+  kind        ResourceKind
+  /// يظهر للحجز في الموقع
+  active      Boolean      @default(true)
+  sortOrder   Int          @default(0) @map("sort_order")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  amenities    ResourceAmenity[]
+  pricingRules PricingRule[]
+  bookingItems BookingItem[]
+  conflictsA   ResourceConflict[] @relation("ConflictA")
+  conflictsB   ResourceConflict[] @relation("ConflictB")
+
+  @@map("booking_resources")
+}
+
+/// المرافق التي يشملها كل مورد قابل للحجز.
+model ResourceAmenity {
+  resourceId String @map("resource_id") @db.Uuid
+  amenityId  String @map("amenity_id") @db.Uuid
+
+  resource BookingResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  amenity  Amenity         @relation(fields: [amenityId], references: [id], onDelete: Restrict)
+
+  @@id([resourceId, amenityId])
+  @@index([amenityId])
+  @@map("resource_amenities")
+}
+
+/// تعارض صريح بين موردين لا يشتركان في مرفق (مثلًا مدخل مشترك). يُخزَّن الزوج مرتبًا (a < b).
+model ResourceConflict {
+  id          String   @id @default(uuid()) @db.Uuid
+  resourceAId String   @map("resource_a_id") @db.Uuid
+  resourceBId String   @map("resource_b_id") @db.Uuid
+  reason      String?  @db.VarChar(200)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  resourceA BookingResource @relation("ConflictA", fields: [resourceAId], references: [id], onDelete: Cascade)
+  resourceB BookingResource @relation("ConflictB", fields: [resourceBId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceAId, resourceBId])
+  @@index([resourceBId])
+  @@map("resource_conflicts")
+}
+
+// ─────────────────────────── الأسعار ───────────────────────────
+
+enum PricingRuleKind {
+  /// سعر حسب أيام الأسبوع (الأساس)
+  WEEKDAY
+  /// سعر موسمي لفترة
+  SEASON
+  /// سعر خاص لتاريخ أو فترة محددة (الأعلى أولوية)
+  SPECIAL
+}
+
+/// قاعدة سعر لمورد. الأولوية: SPECIAL ثم SEASON ثم WEEKDAY، ثم priority الأعلى.
+/// لا يوجد سعر افتراضي: إذا لم تنطبق أي قاعدة على يوم، فلا يمكن حجز المورد فيه.
+model PricingRule {
+  id         String          @id @default(uuid()) @db.Uuid
+  resourceId String          @map("resource_id") @db.Uuid
+  kind       PricingRuleKind
+  label      String?         @db.VarChar(120)
+  /// أيام الأسبوع: 0 = الأحد ... 6 = السبت. فارغة = كل الأيام
+  daysOfWeek Int[]           @map("days_of_week")
+  startDate  DateTime?       @map("start_date") @db.Date
+  endDate    DateTime?       @map("end_date") @db.Date
+  /// سعر اليوم بالريال
+  price      Decimal         @db.Decimal(10, 2)
+  priority   Int             @default(0)
+  active     Boolean         @default(true)
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+
+  resource BookingResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, active])
+  @@map("pricing_rules")
+}
+
+// ─────────────────────────── الضيوف والحجوزات ───────────────────────────
+
+model Guest {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(120)
+  /// رقم الجوال/واتساب بصيغة دولية موحدة، مثل 9665XXXXXXXX
+  phone     String   @unique @db.VarChar(20)
+  email     String?  @db.VarChar(254)
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  bookings Booking[]
+
+  @@index([name])
+  @@map("guests")
+}
+
+enum BookingStatus {
+  NEW // طلب جديد
+  AWAITING_PAYMENT // بانتظار الدفع
+  AWAITING_VERIFICATION // بانتظار التحقق
+  CONFIRMED // مؤكد
+  CANCELLED // ملغي
+  REJECTED // مرفوض
+  EXPIRED // منتهي (انتهت صلاحية الطلب غير المدفوع)
+  COMPLETED // مكتمل (انتهت الإقامة)
+}
+
+enum BookingChannel {
+  WEBSITE
+  GATHERN
+  MANUAL
+}
+
+model Booking {
+  id             String         @id @default(uuid()) @db.Uuid
+  /// رقم الطلب الظاهر للضيف، مثل JD-000123
+  reference      String         @unique @db.VarChar(20)
+  guestId        String         @map("guest_id") @db.Uuid
+  status         BookingStatus  @default(NEW)
+  channel        BookingChannel @default(WEBSITE)
+  /// أول يوم (تاريخ الدخول)
+  startDate      DateTime       @map("start_date") @db.Date
+  /// اليوم التالي لآخر يوم (حصري)
+  endDate        DateTime       @map("end_date") @db.Date
+  totalAmount    Decimal        @map("total_amount") @db.Decimal(10, 2)
+  /// تفصيل السعر كما عُرض للضيف عند الإرسال
+  priceBreakdown Json           @map("price_breakdown")
+  guestCount     Int?           @map("guest_count")
+  guestNotes     String?        @map("guest_notes")
+  adminNotes     String?        @map("admin_notes")
+  /// موعد انتهاء صلاحية الطلب غير المدفوع
+  expiresAt      DateTime?      @map("expires_at")
+  confirmedAt    DateTime?      @map("confirmed_at")
+  confirmedById  String?        @map("confirmed_by_id") @db.Uuid
+  cancelledAt    DateTime?      @map("cancelled_at")
+  cancelReason   String?        @map("cancel_reason")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  guest         Guest              @relation(fields: [guestId], references: [id], onDelete: Restrict)
+  confirmedBy   User?              @relation("BookingConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  items         BookingItem[]
+  locks         BookingLock[]
+  payments      Payment[]
+  accessTokens  GuestAccessToken[]
+  notifications Notification[]
+
+  @@index([status])
+  @@index([startDate])
+  @@index([guestId])
+  @@index([expiresAt])
+  @@map("bookings")
+}
+
+/// مورد محجوز في يوم معين ضمن حجز، بسعره.
+model BookingItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  bookingId  String   @map("booking_id") @db.Uuid
+  resourceId String   @map("resource_id") @db.Uuid
+  date       DateTime @db.Date
+  price      Decimal  @db.Decimal(10, 2)
+
+  booking  Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  resource BookingResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@unique([bookingId, resourceId, date])
+  @@index([resourceId, date])
+  @@map("booking_items")
+}
+
+/// أقفال منع التعارض على مستوى قاعدة البيانات.
+///
+/// كل حجز نشط يحجز مفتاحًا لكل (مرفق × يوم) يشمله، ولكل تعارض صريح (conflict:<id> × يوم).
+/// المفتاح الأساسي (key, date) يمنع أي حجزين متعارضين حتى مع الطلبات المتزامنة.
+/// تُحذف الأقفال عند الإلغاء أو الرفض أو انتهاء الصلاحية.
+model BookingLock {
+  key       String   @db.VarChar(80)
+  date      DateTime @db.Date
+  bookingId String   @map("booking_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@id([key, date])
+  @@index([bookingId])
+  @@map("booking_locks")
+}
+
+// ─────────────────────────── المدفوعات ───────────────────────────
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  GATHERN
+}
+
+enum PaymentStatus {
+  PENDING // بانتظار التحقق
+  ACCEPTED // تحقق المالك من وصول المبلغ
+  REJECTED
+}
+
+model Payment {
+  id           String        @id @default(uuid()) @db.Uuid
+  bookingId    String        @map("booking_id") @db.Uuid
+  method       PaymentMethod
+  amount       Decimal       @db.Decimal(10, 2)
+  status       PaymentStatus @default(PENDING)
+  /// تاريخ التحويل كما أبلغ عنه الضيف
+  reportedAt   DateTime?     @map("reported_at")
+  proofAssetId String?       @unique @map("proof_asset_id") @db.Uuid
+  /// مرجع خارجي (مثل رقم الحجز في جاذر إن) — يُسجَّل يدويًا
+  externalRef  String?       @map("external_ref") @db.VarChar(100)
+  note         String?
+  verifiedAt   DateTime?     @map("verified_at")
+  verifiedById String?       @map("verified_by_id") @db.Uuid
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  booking    Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  proof      MediaAsset? @relation(fields: [proofAssetId], references: [id], onDelete: SetNull)
+  verifiedBy User?       @relation("PaymentVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([bookingId])
+  @@index([status])
+  @@map("payments")
+}
+
+// ─────────────────────────── بوابة الضيف ───────────────────────────
+
+/// رابط الضيف الخاص. يُخزَّن hash الرمز فقط؛ الرمز العشوائي يظهر مرة واحدة عند الإصدار.
+model GuestAccessToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  bookingId  String    @map("booking_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash") @db.Char(64)
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@map("guest_access_tokens")
+}
+
+// ─────────────────────────── الإعدادات والوسائط والسجلات ───────────────────────────
+
+/// إعدادات الموقع (مفتاح ← JSON). بعض المفاتيح خاصة ولا تُرسل للموقع العام أبدًا (مثل bank).
 model SiteSetting {
   key       String   @id @db.VarChar(100)
   value     Json
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("site_settings")
+}
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+  LOGO
+  PAYMENT_PROOF
+}
+
+model MediaAsset {
+  id         String    @id @default(uuid()) @db.Uuid
+  kind       MediaKind
+  /// مفتاح الملف في خدمة التخزين
+  storageKey String    @unique @map("storage_key") @db.VarChar(300)
+  mimeType   String    @map("mime_type") @db.VarChar(100)
+  sizeBytes  Int       @map("size_bytes")
+  alt        String?   @db.VarChar(200)
+  amenityId  String?   @map("amenity_id") @db.Uuid
+  sortOrder  Int       @default(0) @map("sort_order")
+  isHero     Boolean   @default(false) @map("is_hero")
+  /// الملفات الخاصة (مثل إثبات التحويل) لا تُخدم إلا للمدير
+  isPrivate  Boolean   @default(false) @map("is_private")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  amenity Amenity? @relation(fields: [amenityId], references: [id], onDelete: SetNull)
+  payment Payment?
+
+  @@index([kind, sortOrder])
+  @@map("media_assets")
+}
+
+enum NotificationType {
+  NEW_BOOKING
+  PAYMENT_REPORTED
+  BOOKING_CANCELLED
+  SYSTEM
+}
+
+enum DeliveryStatus {
+  NOT_CONFIGURED
+  PENDING
+  SENT
+  FAILED
+}
+
+/// إشعارات المالك: تظهر في لوحة الإدارة، وتُرسل أيضًا عبر واتساب عند إعداده.
+model Notification {
+  id             String           @id @default(uuid()) @db.Uuid
+  type           NotificationType
+  title          String           @db.VarChar(200)
+  body           String
+  bookingId      String?          @map("booking_id") @db.Uuid
+  readAt         DateTime?        @map("read_at")
+  whatsappStatus DeliveryStatus   @default(NOT_CONFIGURED) @map("whatsapp_status")
+  whatsappError  String?          @map("whatsapp_error") @db.VarChar(500)
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([readAt])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+/// سجل العمليات الإدارية المهمة. لا يحتوي كلمات مرور أو رموز.
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(80)
+  entityType String   @map("entity_type") @db.VarChar(60)
+  entityId   String?  @map("entity_id") @db.VarChar(80)
+  details    Json?
+  ip         String?  @db.VarChar(64)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

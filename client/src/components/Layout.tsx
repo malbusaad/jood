@@ -88,7 +88,7 @@ export default function Layout() {
           <div>
             <LogoSlot className="text-jood-beige" />
             <p className="mt-3 text-sm">
-              {site.location.district}، {site.location.city} — {site.location.country}
+              {site.general.location.district}، {site.general.location.city} — {site.general.location.country}
             </p>
           </div>
           <nav className="grid grid-cols-2 gap-2 text-sm" aria-label="روابط التذييل">
@@ -100,7 +100,7 @@ export default function Layout() {
           </nav>
         </div>
         <p className="border-t border-white/10 py-4 text-center text-xs">
-          © {new Date().getFullYear()} {site.name}
+          © {new Date().getFullYear()} {site.general.name}
         </p>
       </footer>
     </div>

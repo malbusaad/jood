@@ -11,7 +11,7 @@ import {
   Wifi,
   type LucideIcon,
 } from "lucide-react";
-import type { AmenityIconName } from "../content/site";
+import type { AmenityIconName } from "../content/types";
 
 const icons: Record<AmenityIconName, LucideIcon> = {
   tent: Tent,

@@ -70,3 +70,7 @@
 }
 .jood-calendar .rdp-today .jood-day { outline: 1px solid var(--color-jood-gold); font-weight: 600; }
 .jood-calendar .rdp-disabled { opacity: 0.35; }
+.jood-calendar .jood-booked .jood-day {
+  background: color-mix(in srgb, var(--color-jood-green) 12%, transparent);
+  color: color-mix(in srgb, var(--color-jood-ink) 50%, transparent);
+}

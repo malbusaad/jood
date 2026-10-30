@@ -1,6 +1,6 @@
 import { ExternalLink } from "lucide-react";
 import PendingNotice from "./PendingNotice";
-import type { SiteContent } from "../content/site";
+import type { SiteContent } from "../content/types";
 
 export default function GathernCard({ gathern }: { gathern: SiteContent["gathern"] }) {
   return (
