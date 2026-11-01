@@ -180,7 +180,8 @@ export const settingDefinitions = {
     }),
     initial: {
       entryCode: null,
-      wifiName: null,
+      // اسم الشبكة كما حدده المالك؛ كلمة المرور لم تُزوَّد بعد.
+      wifiName: "ALJOOD",
       wifiPassword: null,
       departureInstructions: [
         "إطفاء الأنوار وإغلاق الأبواب عند المغادرة.",
