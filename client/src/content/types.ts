@@ -60,3 +60,38 @@ export interface CalendarDay {
   price: number | null;
   available: boolean;
 }
+
+export interface BookingOption {
+  id: string;
+  name: string;
+  kind: "FULL" | "PART";
+  description: string | null;
+  amenities: string[];
+  available: boolean;
+  total: number | null;
+  reason: string | null;
+}
+
+export interface QuoteLine {
+  date: string;
+  resourceId: string;
+  resourceName: string;
+  price: string;
+}
+
+export type Quote =
+  | { available: true; lines: QuoteLine[]; total: number; deposit: number; payable: number; endDate: string }
+  | { available: false; reason: string };
+
+export interface BookingReceipt {
+  reference: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  items: string[];
+  lines: QuoteLine[];
+  total: number;
+  deposit: number;
+  payable: number;
+  bank: { bankName: string | null; accountHolder: string | null; iban: string | null; instructions: string | null } | null;
+}

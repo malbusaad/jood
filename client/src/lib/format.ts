@@ -18,3 +18,21 @@ export function formatTimeAr(hhmm: string): string {
   else period = "مساءً";
   return `${h12}:${mStr} ${period}`;
 }
+
+const dateFmt = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/** "2026-11-12" → «الخميس، 12 نوفمبر 2026» */
+export function formatDateAr(iso: string): string {
+  return dateFmt.format(new Date(`${iso.slice(0, 10)}T00:00:00Z`));
+}
+
+/** Local calendar date → "YYYY-MM-DD" */
+export function toIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}

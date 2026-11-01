@@ -3,7 +3,7 @@ import { cleanup, configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 // Lazy-loaded pages compile on first import in the test environment, which can exceed the 1s default.
-configure({ asyncUtilTimeout: 5000 });
+configure({ asyncUtilTimeout: 10_000 });
 
 afterEach(() => {
   cleanup();

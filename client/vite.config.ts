@@ -13,5 +13,7 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     setupFiles: ["src/test-setup.ts"],
+    // Full page walkthroughs load lazy routes and the calendar library on first use.
+    testTimeout: 20_000,
   },
 });

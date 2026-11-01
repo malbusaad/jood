@@ -74,3 +74,21 @@
   background: color-mix(in srgb, var(--color-jood-green) 12%, transparent);
   color: color-mix(in srgb, var(--color-jood-ink) 50%, transparent);
 }
+
+/* اختيار التاريخ في نموذج الحجز */
+.jood-picker .rdp-day_button {
+  flex-direction: column;
+  width: calc(var(--rdp-day-width) - 4px);
+  height: calc(var(--rdp-day-height) - 4px);
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+}
+.jood-picker .jood-booked:not(.rdp-disabled) .rdp-day_button {
+  background: color-mix(in srgb, var(--color-jood-green) 10%, transparent);
+  color: color-mix(in srgb, var(--color-jood-ink) 55%, transparent);
+}
+.jood-picker .rdp-selected .rdp-day_button {
+  background: var(--color-jood-green);
+  color: var(--color-jood-beige);
+  border-color: var(--color-jood-gold);
+}
