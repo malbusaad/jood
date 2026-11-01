@@ -4,7 +4,7 @@ import { useUser } from "../auth";
 import { Button, Card, ErrorNote, Field, Loading, PageTitle, inputClass, useApi, useMutation } from "../ui";
 
 type Json = Record<string, unknown>;
-type FieldType = "text" | "textarea" | "time" | "number" | "nullableNumber" | "url" | "tel" | "email" | "bool" | "lines" | "password";
+type FieldType = "text" | "textarea" | "time" | "number" | "nullableNumber" | "url" | "tel" | "email" | "bool" | "lines" | "password" | "select";
 
 interface FieldDef {
   path: string;
@@ -13,6 +13,7 @@ interface FieldDef {
   hint?: string;
   ltr?: boolean;
   rows?: number;
+  options?: [string, string][];
 }
 
 interface SectionDef {
@@ -85,7 +86,6 @@ const SECTIONS: SectionDef[] = [
       { path: "unpaidExpiryHours", label: "مهلة الدفع بالساعات", type: "nullableNumber", hint: "تبدأ عند تحويل الطلب إلى «بانتظار الدفع». اتركه فارغًا لإيقاف الإلغاء التلقائي." },
       { path: "maxNights", label: "أقصى عدد أيام للحجز الواحد", type: "number" },
       { path: "maxAdvanceDays", label: "أقصى مدة للحجز مقدمًا (أيام)", type: "number" },
-      { path: "allowProofUpload", label: "السماح للضيف برفع إثبات التحويل", type: "bool" },
     ],
   },
   {
@@ -103,7 +103,7 @@ const SECTIONS: SectionDef[] = [
   {
     key: "guestPortal",
     title: "بوابة الضيف",
-    intro: "تظهر للضيف فقط في رابطه الخاص بعد تأكيد الحجز.",
+    intro: "تظهر للضيف فقط في رابطه الخاص، ويُرسل الرابط من صفحة الحجز بعد التأكيد.",
     ownerOnly: true,
     fields: [
       { path: "entryCode", label: "رمز الدخول", type: "text", ltr: true },
@@ -111,6 +111,7 @@ const SECTIONS: SectionDef[] = [
       { path: "wifiPassword", label: "كلمة مرور الواي فاي", type: "text", ltr: true },
       { path: "departureInstructions", label: "إرشادات المغادرة (كل سطر إرشاد)", type: "lines" },
       { path: "linkGraceHours", label: "ساعات بقاء الرابط بعد وقت الخروج", type: "number" },
+      { path: "showCodesFrom", label: "متى يظهر رمز الدخول والواي فاي", type: "select", options: [["CHECKIN_DAY", "يوم الدخول فقط"], ["IMMEDIATELY", "فور فتح الرابط"]] },
     ],
   },
   {
@@ -150,6 +151,12 @@ function Input({ def, value, onChange, disabled }: { def: FieldDef; value: unkno
           onChange={(e) => onChange(e.target.value.split("\n"))}
           {...common}
         />
+      );
+    case "select":
+      return (
+        <select value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value)} disabled={disabled} className={inputClass}>
+          {def.options?.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
       );
     case "bool":
       return (

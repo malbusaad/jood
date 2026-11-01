@@ -5,6 +5,7 @@ import type { BookingDetail, BookingStatus, PaymentMethod } from "../types";
 import { ACTION_LABEL, CHANNEL, METHOD, PAYMENT_STATUS, STATUS } from "../labels";
 import { formatDateAr } from "../../lib/format";
 import { waLink, waMessages } from "../whatsapp";
+import GuestLinkCard from "./GuestLinkCard";
 import { Button, Card, ErrorNote, Field, Loading, PageTitle, StatusBadge, dateTime, inputClass, money, nightsBetween, useApi, useMutation } from "../ui";
 
 const HISTORY_LABEL: Record<string, string> = {
@@ -214,6 +215,8 @@ export default function BookingDetailPage() {
               </a>
             </div>
           </Card>
+
+          <GuestLinkCard booking={b} onChange={reload} />
 
           <Card title="العقد">
             <Link to={`/admin/bookings/${b.id}/contract`} className="flex items-center justify-center gap-2 rounded-xl bg-jood-green px-4 py-2.5 text-sm text-jood-beige hover:bg-jood-green-800">

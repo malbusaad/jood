@@ -258,6 +258,8 @@ export async function changeStatus(db: PrismaClient, req: Request, id: string, t
       data.cancelledAt = new Date();
       data.cancelReason = reason ?? null;
       data.expiresAt = null;
+      // A cancelled booking's guest link stops working immediately.
+      await tx.guestAccessToken.updateMany({ where: { bookingId: id, revokedAt: null }, data: { revokedAt: new Date() } });
     } else if (to === "COMPLETED") {
       if (toIsoDate(b.endDate) > addDays(todayInRiyadh(), 1)) throw new HttpError(409, "لا يكتمل الحجز قبل انتهاء موعده");
     } else if (to === "AWAITING_VERIFICATION") {

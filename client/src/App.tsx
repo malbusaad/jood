@@ -15,6 +15,7 @@ const FaqPage = lazy(() => import("./pages/FaqPage"));
 const ContactPage = lazy(() => import("./pages/ContactPage"));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+const GuestPortalPage = lazy(() => import("./pages/GuestPortalPage"));
 // لوحة الإدارة: حزمة منفصلة لا يحمّلها زوار الموقع.
 const AdminApp = lazy(() => import("./admin/AdminApp"));
 
@@ -26,6 +27,14 @@ export default function App() {
         element={
           <Suspense fallback={<div className="min-h-dvh bg-jood-beige" aria-busy="true" />}>
             <AdminApp />
+          </Suspense>
+        }
+      />
+      <Route
+        path="g/:token"
+        element={
+          <Suspense fallback={<div className="min-h-dvh bg-jood-green-950" aria-busy="true" />}>
+            <GuestPortalPage />
           </Suspense>
         }
       />

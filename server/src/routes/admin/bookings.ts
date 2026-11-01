@@ -18,6 +18,7 @@ import {
   rejectPayment,
 } from "../../services/bookings.js";
 import { buildContract } from "../../services/contract.js";
+import { issueGuestLink, revokeGuestLinks } from "../../services/guestAccess.js";
 import type { WhatsAppSender } from "../../services/notifications.js";
 
 const statuses = ["NEW", "AWAITING_PAYMENT", "AWAITING_VERIFICATION", "CONFIRMED", "CANCELLED", "REJECTED", "EXPIRED", "COMPLETED"] as const;
@@ -56,7 +57,7 @@ function summarize<T extends { payments: { amount: Prisma.Decimal; status: strin
   };
 }
 
-export function bookingsRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender | null }) {
+export function bookingsRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender | null; publicBaseUrl: string }) {
   const router = Router();
 
   router.get("/", async (req, res) => {
@@ -95,6 +96,8 @@ export function bookingsRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSende
         items: { include: { resource: { select: { id: true, name: true, kind: true } } }, orderBy: { date: "asc" } },
         payments: { include: { verifiedBy: { select: { name: true } } }, orderBy: { createdAt: "asc" } },
         confirmedBy: { select: { name: true } },
+        // Never the token itself — only its status.
+        accessTokens: { select: { id: true, createdAt: true, expiresAt: true, revokedAt: true, lastUsedAt: true }, orderBy: { createdAt: "desc" } },
       },
     });
     if (!b) throw new HttpError(404, "الحجز غير موجود");
@@ -208,6 +211,17 @@ export function bookingsRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSende
     const { id } = parse(uuidParam, req.params);
     const { note } = parse(z.object({ note: z.string().trim().max(500).nullable().optional() }), req.body);
     res.json(await rejectPayment(db, req, id, note ?? null));
+  });
+
+  router.post("/:id/guest-link", async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    res.status(201).json(await issueGuestLink(db, req, id, opts.publicBaseUrl));
+  });
+
+  router.delete("/:id/guest-link", async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    await revokeGuestLinks(db, req, id);
+    res.status(204).end();
   });
 
   router.get("/:id/contract", async (req, res) => {

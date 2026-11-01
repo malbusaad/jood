@@ -16,6 +16,7 @@ const app = createApp({
   clientDistDir,
   secureCookies: env.NODE_ENV === "production",
   allowedOrigins: [new URL(env.PUBLIC_BASE_URL).origin],
+  publicBaseUrl: env.PUBLIC_BASE_URL,
   whatsapp: (() => {
     const cfg = whatsAppConfigFromEnv();
     return cfg ? metaWhatsAppSender(cfg) : null;

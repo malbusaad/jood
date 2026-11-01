@@ -81,6 +81,7 @@ export interface BookingDetail {
   payments: Payment[];
   paid: string;
   allowedTransitions: BookingStatus[];
+  accessTokens: { id: string; createdAt: string; expiresAt: string; revokedAt: string | null; lastUsedAt: string | null }[];
   history: { id: string; action: string; details: Record<string, unknown> | null; createdAt: string; user: { name: string } | null }[];
 }
 

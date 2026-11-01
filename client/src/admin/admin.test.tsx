@@ -62,7 +62,7 @@ function booking(overrides: Partial<BookingDetail> = {}): BookingDetail {
     cancelledAt: null, cancelReason: null, contractSentAt: null, contractAcceptedAt: null, createdAt: "2026-11-01T10:00:00.000Z",
     guest: { id: "g1", name: "سارة القحطاني", phone: "966501234567", email: null, notes: null },
     items: [{ id: "i1", date: "2026-12-10", price: "1200.00", resource: { id: "full", name: "الاستراحة كاملة", kind: "FULL" } }],
-    payments: [], paid: "0.00", allowedTransitions: ["AWAITING_PAYMENT", "CONFIRMED", "REJECTED", "CANCELLED"], history: [],
+    payments: [], paid: "0.00", allowedTransitions: ["AWAITING_PAYMENT", "CONFIRMED", "REJECTED", "CANCELLED"], accessTokens: [], history: [],
     ...overrides,
   };
 }
@@ -162,6 +162,50 @@ describe("booking detail", () => {
   });
 });
 
+describe("guest portal link", () => {
+  it("is offered only for confirmed bookings, then issued and sent on WhatsApp with the link", async () => {
+    mockAdminApi({ "GET /api/admin/bookings/b1": () => [200, booking()] }, OWNER);
+    const first = renderAt("/admin/bookings/b1");
+    await screen.findByRole("heading", { name: "حجز JD-000007" });
+    expect(screen.queryByRole("heading", { name: "بوابة الضيف" })).toBeNull();
+    first.unmount();
+
+    const url = `https://jood.example/g/${"t".repeat(43)}`;
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/bookings/b1": () => [200, booking({ status: "CONFIRMED", paid: "1200.00", allowedTransitions: ["CANCELLED", "COMPLETED"] })],
+        "POST /api/admin/bookings/b1/guest-link": () => [201, { id: "t1", url, expiresAt: "2026-12-11T13:00:00.000Z" }],
+      },
+      OWNER,
+    );
+    renderAt("/admin/bookings/b1");
+    fireEvent.click(await screen.findByRole("button", { name: "إنشاء رابط البوابة" }));
+    const send = await screen.findByRole("link", { name: /إرسال الرابط للضيف/ });
+    const href = decodeURIComponent(send.getAttribute("href")!);
+    expect(href).toMatch(/^https:\/\/wa\.me\/966501234567\?text=/);
+    expect(href).toContain(url);
+    expect(href).toContain("JD-000007");
+    expect(screen.getByText(/يظهر الرابط هنا مرة واحدة فقط/)).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings/b1/guest-link")).toBe(true);
+  });
+
+  it("shows an active link's status and lets the owner revoke it", async () => {
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/bookings/b1": () => [200, booking({ status: "CONFIRMED", paid: "1200.00", allowedTransitions: ["CANCELLED"], accessTokens: [{ id: "t1", createdAt: "2026-11-02T10:00:00Z", expiresAt: "2099-01-01T00:00:00Z", revokedAt: null, lastUsedAt: null }] })],
+        "DELETE /api/admin/bookings/b1/guest-link": () => [204, null],
+      },
+      OWNER,
+    );
+    vi.stubGlobal("confirm", () => true);
+    renderAt("/admin/bookings/b1");
+    expect(await screen.findByText(/يوجد رابط فعّال حتى/)).toBeInTheDocument();
+    expect(screen.getByText("لم يفتحه الضيف بعد.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "إلغاء الرابط" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
+  });
+});
+
 describe("settings", () => {
   const settings = {
     general: { name: "استراحة الجود", tagline: "x", welcome: "x", description: "x", location: { district: "العزيزية", city: "الخبر", country: "السعودية" } },
@@ -169,9 +213,9 @@ describe("settings", () => {
     contact: { phone: null, whatsapp: null, email: null, mapUrl: null },
     gathern: { url: null, notice: "تنبيه" },
     bank: { bankName: null, accountHolder: null, iban: null, instructions: null },
-    bookingPolicy: { unpaidExpiryHours: 15, securityDeposit: 500, allowProofUpload: true, maxAdvanceDays: 365, maxNights: 7 },
+    bookingPolicy: { unpaidExpiryHours: 15, securityDeposit: 500, maxAdvanceDays: 365, maxNights: 7 },
     houseRules: [], faqs: [], cancellationPolicy: { text: null },
-    guestPortal: { entryCode: null, wifiName: null, wifiPassword: null, departureInstructions: [], linkGraceHours: 12 },
+    guestPortal: { entryCode: null, wifiName: null, wifiPassword: null, departureInstructions: [], linkGraceHours: 12, showCodesFrom: "CHECKIN_DAY" },
     notifications: { ownerWhatsapp: null, whatsappEnabled: false },
     contract: { template: "# عقد" },
   };

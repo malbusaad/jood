@@ -11,7 +11,7 @@ import { bookingsRouter, calendarRouter, dashboardRouter, guestsRouter } from ".
 import type { WhatsAppSender } from "../../services/notifications.js";
 
 /** Everything under /api/admin requires a signed-in admin. Sensitive areas are owner-only. */
-export function adminRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender | null }) {
+export function adminRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender | null; publicBaseUrl: string }) {
   const router = Router();
   router.use(requireAuth);
 

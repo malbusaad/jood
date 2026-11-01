@@ -31,3 +31,9 @@ export function waMessages(b: BookingDetail) {
     },
   ];
 }
+
+/** Message carrying the guest's private portal link. */
+export function waPortalMessage(b: BookingDetail, url: string) {
+  const name = b.guest.name.split(" ")[0];
+  return `أهلًا ${name}، تم تأكيد حجزك رقم ${b.reference} في استراحة الجود.\nهذا رابطك الخاص، وفيه تفاصيل الحجز والتعليمات، ويظهر فيه رمز الدخول والواي فاي يوم وصولك:\n${url}\nالرابط خاص بك، فلا تشاركه مع غيرك.`;
+}

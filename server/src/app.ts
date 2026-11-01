@@ -10,6 +10,7 @@ import { healthRouter } from "./routes/health.js";
 import { authRouter } from "./routes/auth.js";
 import { publicRouter } from "./routes/public.js";
 import { adminRouter } from "./routes/admin/index.js";
+import { guestRouter } from "./routes/guest.js";
 import { loadSession, requireSameOrigin } from "./auth/session.js";
 import { HttpError } from "./lib/http.js";
 import type { WhatsAppSender } from "./services/notifications.js";
@@ -30,6 +31,8 @@ export interface AppOptions {
   bookingLimit?: number;
   /** Sends owner notifications to WhatsApp; null when not configured. */
   whatsapp?: WhatsAppSender | null;
+  /** Public site address, used to build guest portal links. */
+  publicBaseUrl?: string;
 }
 
 export function createApp({
@@ -41,6 +44,7 @@ export function createApp({
   apiLimit = 300,
   bookingLimit = 10,
   whatsapp = null,
+  publicBaseUrl = "http://localhost:5173",
 }: AppOptions) {
   const app = express();
 
@@ -80,6 +84,7 @@ export function createApp({
 
   app.use("/api/health", healthRouter(db));
   app.use("/api/public", publicRouter(db, { whatsapp, bookingLimit }));
+  app.use("/api/guest", guestRouter(db));
 
   app.use("/api/auth", requireSameOrigin(allowedOrigins), loadSession(db, secureCookies));
   app.use("/api/auth", authRouter(db, { secureCookies, loginLimit }));
@@ -88,7 +93,7 @@ export function createApp({
     res.set("Cache-Control", "no-store");
     next();
   });
-  app.use("/api/admin", adminRouter(db, { whatsapp }));
+  app.use("/api/admin", adminRouter(db, { whatsapp, publicBaseUrl }));
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "المسار غير موجود" });

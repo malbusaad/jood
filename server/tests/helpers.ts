@@ -19,7 +19,7 @@ export async function resetDb({ seed = true } = {}) {
 }
 
 export function makeApp(opts: Partial<AppOptions> = {}) {
-  return createApp({ db, loginLimit: 1000, apiLimit: 100_000, ...opts });
+  return createApp({ db, loginLimit: 1000, apiLimit: 100_000, bookingLimit: 100_000, ...opts });
 }
 
 export const PASSWORD = "correct-horse-battery";

@@ -28,7 +28,7 @@ describe("public site API", () => {
     await agent.put("/api/admin/settings/bank").send({ bankName: "بنك", accountHolder: "المالك", iban: IBAN, instructions: null }).expect(200);
     await agent
       .put("/api/admin/settings/guestPortal")
-      .send({ entryCode: "4321", wifiName: "Jood", wifiPassword: "wifi-secret", departureInstructions: [], linkGraceHours: 12 })
+      .send({ entryCode: "4321", wifiName: "Jood", wifiPassword: "wifi-secret", departureInstructions: [], linkGraceHours: 12, showCodesFrom: "CHECKIN_DAY" })
       .expect(200);
     const res = await request(app).get("/api/public/site");
     const body = JSON.stringify(res.body);

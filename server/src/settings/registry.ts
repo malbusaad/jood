@@ -160,12 +160,11 @@ export const settingDefinitions = {
       unpaidExpiryHours: z.number().int().min(1).max(24 * 30).nullable(),
       /** مبلغ التأمين المسترد ضد الأضرار، بالريال (0 = بلا تأمين) */
       securityDeposit: z.number().min(0).max(100_000),
-      allowProofUpload: z.boolean(),
       /** أقصى عدد أيام مقدمًا يمكن الحجز فيه */
       maxAdvanceDays: z.number().int().min(1).max(730),
       maxNights: z.number().int().min(1).max(30),
     }),
-    initial: { unpaidExpiryHours: 15, securityDeposit: 500, allowProofUpload: true, maxAdvanceDays: 365, maxNights: 7 },
+    initial: { unpaidExpiryHours: 15, securityDeposit: 500, maxAdvanceDays: 365, maxNights: 7 },
   },
   guestPortal: {
     public: false,
@@ -176,6 +175,8 @@ export const settingDefinitions = {
       departureInstructions: z.array(text(300)).max(30),
       /** ساعات بقاء رابط الضيف صالحًا بعد وقت الخروج */
       linkGraceHours: z.number().int().min(0).max(24 * 14),
+      /** متى يظهر رمز الدخول وبيانات الواي فاي في البوابة: يوم الدخول فقط، أو فور فتح الرابط */
+      showCodesFrom: z.enum(["CHECKIN_DAY", "IMMEDIATELY"]),
     }),
     initial: {
       entryCode: null,
@@ -186,6 +187,7 @@ export const settingDefinitions = {
         "تسليم الاستراحة بحالة جيدة.",
       ],
       linkGraceHours: 12,
+      showCodesFrom: "CHECKIN_DAY",
     },
   },
   notifications: {
