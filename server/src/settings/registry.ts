@@ -165,7 +165,7 @@ export const settingDefinitions = {
       maxAdvanceDays: z.number().int().min(1).max(730),
       maxNights: z.number().int().min(1).max(30),
     }),
-    initial: { unpaidExpiryHours: 24, securityDeposit: 500, allowProofUpload: true, maxAdvanceDays: 365, maxNights: 7 },
+    initial: { unpaidExpiryHours: 15, securityDeposit: 500, allowProofUpload: true, maxAdvanceDays: 365, maxNights: 7 },
   },
   guestPortal: {
     public: false,

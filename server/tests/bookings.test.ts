@@ -274,8 +274,8 @@ describe("statuses, payments and confirmation", () => {
 
     const moved = await agent.post(`/api/admin/bookings/${b.id}/status`).send({ status: "AWAITING_PAYMENT" });
     const deadline = new Date(moved.body.expiresAt).getTime();
-    expect(deadline).toBeGreaterThan(Date.now() + 23.9 * 3600_000);
-    expect(deadline).toBeLessThan(Date.now() + 24.1 * 3600_000);
+    expect(deadline).toBeGreaterThan(Date.now() + 14.9 * 3600_000);
+    expect(deadline).toBeLessThan(Date.now() + 15.1 * 3600_000);
 
     await db.booking.update({ where: { id: b.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
     const full = await fullResource();
@@ -484,5 +484,16 @@ describe("dates are stored as calendar days", () => {
     const b = await db.booking.findUniqueOrThrow({ where: { reference: r.body.reference } });
     expect(b.startDate).toEqual(fromIsoDate(SUN));
     expect(b.endDate).toEqual(fromIsoDate(addDays(SUN, 1)));
+  });
+});
+
+describe("payment deadline", () => {
+  it("defaults to the owner's 15 hours, in the contract too", async () => {
+    const { agent } = await signedIn(app);
+    const full = await fullResource();
+    const r = await book([full.id], SUN);
+    const b = await db.booking.findUniqueOrThrow({ where: { reference: r.body.reference } });
+    const c = (await agent.get(`/api/admin/bookings/${b.id}/contract`)).body;
+    expect(JSON.stringify(c.blocks)).toContain("خلال 15 ساعة من طلب الدفع");
   });
 });

@@ -169,7 +169,7 @@ describe("settings", () => {
     contact: { phone: null, whatsapp: null, email: null, mapUrl: null },
     gathern: { url: null, notice: "تنبيه" },
     bank: { bankName: null, accountHolder: null, iban: null, instructions: null },
-    bookingPolicy: { unpaidExpiryHours: 24, securityDeposit: 500, allowProofUpload: true, maxAdvanceDays: 365, maxNights: 7 },
+    bookingPolicy: { unpaidExpiryHours: 15, securityDeposit: 500, allowProofUpload: true, maxAdvanceDays: 365, maxNights: 7 },
     houseRules: [], faqs: [], cancellationPolicy: { text: null },
     guestPortal: { entryCode: null, wifiName: null, wifiPassword: null, departureInstructions: [], linkGraceHours: 12 },
     notifications: { ownerWhatsapp: null, whatsappEnabled: false },
