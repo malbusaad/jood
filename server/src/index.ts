@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { loadEnv } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
 import { createApp } from "./app.js";
+import { metaWhatsAppSender, whatsAppConfigFromEnv } from "./services/notifications.js";
+import { expireStaleBookings } from "./services/bookings.js";
 
 const env = loadEnv();
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -14,7 +16,17 @@ const app = createApp({
   clientDistDir,
   secureCookies: env.NODE_ENV === "production",
   allowedOrigins: [new URL(env.PUBLIC_BASE_URL).origin],
+  whatsapp: (() => {
+    const cfg = whatsAppConfigFromEnv();
+    return cfg ? metaWhatsAppSender(cfg) : null;
+  })(),
 });
+
+// Expire unpaid requests past their payment deadline (also checked before every availability lookup).
+const expiryTimer = setInterval(() => {
+  expireStaleBookings(prisma).catch((err) => console.error("[expiry]", err instanceof Error ? err.message : err));
+}, 5 * 60 * 1000);
+expiryTimer.unref();
 
 const server = app.listen(env.PORT, () => {
   console.log(`[jood] server listening on port ${env.PORT} (${env.NODE_ENV})`);

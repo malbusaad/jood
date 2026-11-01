@@ -1,19 +1,39 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
-import { getSettings, publicSettingKeys } from "../settings/registry.js";
+import { getSetting, getSettings, phoneSchema, publicSettingKeys } from "../settings/registry.js";
 import { addDays, eachDate, isoDate, todayInRiyadh } from "../lib/dates.js";
 import { HttpError, parse } from "../lib/http.js";
 import { resolveRule } from "../services/pricing.js";
 import { blockedResources } from "../services/conflicts.js";
+import { createBooking, evaluateSelection, expireStaleBookings } from "../services/bookings.js";
+import type { WhatsAppSender } from "../services/notifications.js";
 
 const rangeSchema = z
   .object({ from: isoDate, to: isoDate })
   .refine((r) => r.to > r.from, "يجب أن يكون تاريخ النهاية بعد البداية")
   .refine((r) => eachDate(r.from, r.to).length <= 62, "النطاق الأقصى 62 يومًا");
 
+const selectionSchema = z.object({
+  resourceIds: z.array(z.uuid()).min(1).max(20),
+  startDate: isoDate,
+  nights: z.number().int().min(1).max(30),
+});
+
+const bookingSchema = selectionSchema.extend({
+  name: z.string().trim().min(2, "الاسم مطلوب").max(120),
+  phone: phoneSchema,
+  email: z.email().max(254).nullable().optional(),
+  guestCount: z.number().int().min(1).max(500).nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+  acceptTerms: z.literal(true, { error: "يجب الموافقة على الشروط والتعليمات" }),
+  /** Honeypot: real visitors never see or fill this field. */
+  website: z.string().max(0).optional(),
+});
+
 /** Public catalog API. Returns only public settings — never bank details, codes or guest data. */
-export function publicRouter(db: PrismaClient) {
+export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender | null; bookingLimit: number }) {
   const router = Router();
 
   router.get("/site", async (_req, res) => {
@@ -65,6 +85,7 @@ export function publicRouter(db: PrismaClient) {
   /** Daily price and availability of the full rest house — used by the public calendar. */
   router.get("/calendar", async (req, res) => {
     const { from, to } = parse(rangeSchema, req.query);
+    await expireStaleBookings(db);
     const full = await db.bookingResource.findFirst({
       where: { kind: "FULL", active: true },
       include: { pricingRules: { where: { active: true } } },
@@ -85,6 +106,89 @@ export function publicRouter(db: PrismaClient) {
           available: date >= today && rule !== null && !blocked.has(date),
         };
       }),
+    });
+  });
+
+  /**
+   * What can be booked for a given start date and number of days: the full rest house and the
+   * parts the owner made bookable, each with availability and the exact price for those days.
+   */
+  router.get("/options", async (req, res) => {
+    const { startDate, nights } = parse(z.object({ startDate: isoDate, nights: z.coerce.number().int().min(1).max(30) }), req.query);
+    await expireStaleBookings(db);
+    const resources = await db.bookingResource.findMany({
+      where: { active: true },
+      include: { amenities: { include: { amenity: { select: { name: true } } } } },
+      orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
+    });
+    const options = await Promise.all(
+      resources.map(async (r) => {
+        try {
+          const ev = await evaluateSelection(db, { resourceIds: [r.id], startDate, nights }, { channel: "WEBSITE" });
+          return { id: r.id, name: r.name, kind: r.kind, description: r.description, amenities: r.amenities.map((a) => a.amenity.name), available: true, total: Number(ev.quote.total), reason: null };
+        } catch (err) {
+          if (!(err instanceof HttpError)) throw err;
+          return { id: r.id, name: r.name, kind: r.kind, description: r.description, amenities: r.amenities.map((a) => a.amenity.name), available: false, total: null, reason: err.message };
+        }
+      }),
+    );
+    const policy = await getSetting(db, "bookingPolicy");
+    res.set("Cache-Control", "no-store");
+    res.json({ options, deposit: policy.securityDeposit, maxNights: policy.maxNights });
+  });
+
+  /** Exact price breakdown for a selection, re-checked on the server. */
+  router.post("/quote", async (req, res) => {
+    const sel = parse(selectionSchema, req.body);
+    try {
+      const ev = await evaluateSelection(db, sel, { channel: "WEBSITE" });
+      const total = Number(ev.quote.total);
+      res.json({ available: true, lines: ev.quote.lines, total, deposit: ev.deposit, payable: total + ev.deposit, endDate: ev.endDate });
+    } catch (err) {
+      if (err instanceof HttpError && err.status < 500) return void res.json({ available: false, reason: err.message });
+      throw err;
+    }
+  });
+
+  const bookingLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: opts.bookingLimit,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: { error: "عدد كبير من الطلبات، حاول لاحقًا أو تواصل معنا مباشرة" },
+  });
+
+  /** Sends a booking request. It is NOT a confirmed booking: the owner contacts the guest on WhatsApp first. */
+  router.post("/bookings", bookingLimiter, async (req, res) => {
+    const input = parse(bookingSchema, req.body);
+    const { booking, evaluation } = await createBooking(
+      db,
+      {
+        resourceIds: input.resourceIds,
+        startDate: input.startDate,
+        nights: input.nights,
+        guest: { name: input.name, phone: input.phone, email: input.email ?? null },
+        guestCount: input.guestCount ?? null,
+        guestNotes: input.notes ?? null,
+        channel: "WEBSITE",
+      },
+      { whatsapp: opts.whatsapp },
+    );
+    // Bank details go only to the person who just sent a request — never to the public pages.
+    const bank = await getSetting(db, "bank");
+    const total = Number(booking.totalAmount);
+    const deposit = Number(booking.depositAmount);
+    res.status(201).json({
+      reference: booking.reference,
+      status: booking.status,
+      startDate: input.startDate,
+      endDate: evaluation.endDate,
+      items: evaluation.resources.map((r) => r.name),
+      lines: evaluation.quote.lines,
+      total,
+      deposit,
+      payable: total + deposit,
+      bank: bank.iban ? bank : null,
     });
   });
 

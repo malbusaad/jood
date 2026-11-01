@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
+import { CONTRACT_TEMPLATE } from "./contract-template.js";
+
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "الوقت بصيغة HH:mm");
 const nullableUrl = z.url().max(500).nullable();
 const text = (max: number) => z.string().trim().min(1).max(max);
@@ -122,7 +124,16 @@ export const settingDefinitions = {
   cancellationPolicy: {
     public: true,
     schema: z.object({ text: z.string().trim().max(5000).nullable() }),
-    initial: { text: null },
+    // اعتمدها المالك: استرداد كامل قبل 72 ساعة، تعديل الموعد مرة واحدة، لا استرداد عند عدم الحضور.
+    initial: {
+      text: [
+        "يُسترد مبلغ الحجز كاملًا إذا أُلغي الحجز قبل موعد الدخول بـ 72 ساعة على الأقل.",
+        "إذا أُلغي الحجز قبل الموعد بأقل من 72 ساعة، فلا يُسترد مبلغ الحجز.",
+        "يُعاد مبلغ التأمين كاملًا في جميع حالات الإلغاء.",
+        "يُسمح بتعديل موعد الحجز مرة واحدة فقط، حسب الإتاحة، ويُطبق سعر الموعد الجديد.",
+        "إذا لم يحضر المستأجر في موعد الحجز دون إلغاء مسبق، فلا يحق له استرداد مبلغ الحجز.",
+      ].join("\n"),
+    },
   },
   // ─── خاصة ───
   bank: {
@@ -142,14 +153,19 @@ export const settingDefinitions = {
   bookingPolicy: {
     public: false,
     schema: z.object({
-      /** ساعات صلاحية الطلب غير المدفوع قبل انتهائه تلقائيًا. null = لا ينتهي تلقائيًا */
+      /**
+       * ساعات مهلة الدفع بعد أن يحوّل المالك الطلب إلى «بانتظار الدفع» (أي بعد تواصله مع الضيف).
+       * الطلبات الجديدة لا تنتهي تلقائيًا قبل تواصل المالك. null = لا ينتهي تلقائيًا.
+       */
       unpaidExpiryHours: z.number().int().min(1).max(24 * 30).nullable(),
+      /** مبلغ التأمين المسترد ضد الأضرار، بالريال (0 = بلا تأمين) */
+      securityDeposit: z.number().min(0).max(100_000),
       allowProofUpload: z.boolean(),
       /** أقصى عدد أيام مقدمًا يمكن الحجز فيه */
       maxAdvanceDays: z.number().int().min(1).max(730),
       maxNights: z.number().int().min(1).max(30),
     }),
-    initial: { unpaidExpiryHours: 24, allowProofUpload: true, maxAdvanceDays: 365, maxNights: 7 },
+    initial: { unpaidExpiryHours: 24, securityDeposit: 500, allowProofUpload: true, maxAdvanceDays: 365, maxNights: 7 },
   },
   guestPortal: {
     public: false,
@@ -182,8 +198,8 @@ export const settingDefinitions = {
   },
   contract: {
     public: false,
-    schema: z.object({ template: z.string().max(20000).nullable() }),
-    initial: { template: null },
+    schema: z.object({ template: z.string().trim().min(1).max(20000) }),
+    initial: { template: CONTRACT_TEMPLATE },
   },
 } as const;
 
