@@ -1,6 +1,7 @@
-import { lazy } from "react";
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router";
 import Layout from "./components/Layout";
+import SiteGate from "./components/SiteGate";
 import HomePage from "./pages/HomePage";
 
 // الصفحات غير الرئيسية تُحمَّل عند الحاجة لتسريع فتح الصفحة الرئيسية.
@@ -14,11 +15,27 @@ const FaqPage = lazy(() => import("./pages/FaqPage"));
 const ContactPage = lazy(() => import("./pages/ContactPage"));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+// لوحة الإدارة: حزمة منفصلة لا يحمّلها زوار الموقع.
+const AdminApp = lazy(() => import("./admin/AdminApp"));
 
 export default function App() {
   return (
     <Routes>
-      <Route element={<Layout />}>
+      <Route
+        path="admin/*"
+        element={
+          <Suspense fallback={<div className="min-h-dvh bg-jood-beige" aria-busy="true" />}>
+            <AdminApp />
+          </Suspense>
+        }
+      />
+      <Route
+        element={
+          <SiteGate>
+            <Layout />
+          </SiteGate>
+        }
+      >
         <Route index element={<HomePage />} />
         <Route path="amenities" element={<AmenitiesPage />} />
         <Route path="gallery" element={<GalleryPage />} />

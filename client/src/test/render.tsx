@@ -2,7 +2,6 @@ import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { vi } from "vitest";
 import App from "../App";
-import SiteGate from "../components/SiteGate";
 import { SiteContentProvider } from "../hooks/useSiteContent";
 import type { BookingOption, BookingReceipt, SiteContent } from "../content/types";
 import { calendarFixture, siteFixture } from "./fixtures";
@@ -52,9 +51,7 @@ export function renderApp(path: string, opts?: MockApiOptions) {
   const view = render(
     <MemoryRouter initialEntries={[path]}>
       <SiteContentProvider>
-        <SiteGate>
-          <App />
-        </SiteGate>
+        <App />
       </SiteContentProvider>
     </MemoryRouter>,
   );
