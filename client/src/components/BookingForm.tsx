@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { DayPicker, type DayButtonProps } from "react-day-picker";
 import { ar } from "react-day-picker/locale";
@@ -11,6 +11,29 @@ import { useSiteContent } from "../hooks/useSiteContent";
 import CopyButton from "./CopyButton";
 
 const numberFmt = new Intl.NumberFormat("en-US");
+
+/**
+ * Day prices for the picker. The day component is defined once at module level and reads this
+ * context: a component defined inside render would get a new identity on every render, making
+ * React rebuild every day button (lost clicks and keyboard focus while data loads).
+ */
+const DaysContext = createContext<Map<string, CalendarDay>>(new Map());
+
+function DayWithPrice({ day, modifiers, children, ...props }: DayButtonProps) {
+  const info = useContext(DaysContext).get(toIso(day.date));
+  return (
+    <button {...props}>
+      <span className="block leading-none">{children}</span>
+      {!modifiers.disabled && info && (
+        <span className="mt-1 block text-[10px] leading-none opacity-75">
+          {info.available && info.price !== null ? numberFmt.format(info.price) : "محجوز"}
+        </span>
+      )}
+    </button>
+  );
+}
+
+const pickerComponents = { DayButton: DayWithPrice };
 
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
@@ -135,46 +158,34 @@ export default function BookingForm() {
 
   if (receipt) return <Receipt receipt={receipt} phone={form.phone} />;
 
-  function DayWithPrice({ day, modifiers, children, ...props }: DayButtonProps) {
-    const info = days.get(toIso(day.date));
-    return (
-      <button {...props}>
-        <span className="block leading-none">{children}</span>
-        {!modifiers.disabled && info && (
-          <span className="mt-1 block text-[10px] leading-none opacity-75">
-            {info.available && info.price !== null ? numberFmt.format(info.price) : "محجوز"}
-          </span>
-        )}
-      </button>
-    );
-  }
-
   const input = "w-full rounded-xl border border-jood-green/20 bg-white px-4 py-3 outline-none transition focus:border-jood-gold";
 
   return (
     <form onSubmit={submit} className="space-y-5" noValidate>
       <Step n={1} title="اختر التاريخ">
         <div className="jood-calendar jood-picker overflow-x-auto">
-          <DayPicker
-            mode="single"
-            required={false}
-            selected={date}
-            onSelect={(d) => {
-              setDate(d);
-              setError(null);
-            }}
-            locale={ar}
-            dir="rtl"
-            numerals="latn"
-            weekStartsOn={0}
-            month={month}
-            onMonthChange={setMonth}
-            startMonth={new Date(today.getFullYear(), today.getMonth())}
-            disabled={{ before: today }}
-            modifiers={{ booked: (d: Date) => days.get(toIso(d))?.available === false && d >= today }}
-            modifiersClassNames={{ booked: "jood-booked" }}
-            components={{ DayButton: DayWithPrice }}
-          />
+          <DaysContext.Provider value={days}>
+            <DayPicker
+              mode="single"
+              required={false}
+              selected={date}
+              onSelect={(d) => {
+                setDate(d);
+                setError(null);
+              }}
+              locale={ar}
+              dir="rtl"
+              numerals="latn"
+              weekStartsOn={0}
+              month={month}
+              onMonthChange={setMonth}
+              startMonth={new Date(today.getFullYear(), today.getMonth())}
+              disabled={{ before: today }}
+              modifiers={{ booked: (d: Date) => days.get(toIso(d))?.available === false && d >= today }}
+              modifiersClassNames={{ booked: "jood-booked" }}
+              components={pickerComponents}
+            />
+          </DaysContext.Provider>
         </div>
         <p className="mt-2 text-xs text-jood-ink/60">الأسعار تحت الأيام للاستراحة كاملة. «محجوز» تعني أن الاستراحة كاملة غير متاحة، وقد تتوفر أجزاء منها.</p>
         <label className="mt-5 flex flex-wrap items-center gap-3">
