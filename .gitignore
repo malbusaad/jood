@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+build/
+*.tsbuildinfo
+
+# Environment / secrets — never commit
+.env
+.env.*
+!.env.example
+!server/.env.test.example
+
+# Uploads & backups (may contain guest data)
+uploads/
+*.dump
+*.sql.gz
+backups/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editors
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+coverage/
