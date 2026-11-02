@@ -14,6 +14,8 @@ import { guestRouter } from "./routes/guest.js";
 import { loadSession, requireSameOrigin } from "./auth/session.js";
 import { HttpError } from "./lib/http.js";
 import type { WhatsAppSender } from "./services/notifications.js";
+import type { LockClient } from "./services/ttlock.js";
+import { makeSecretBox, type SecretBox } from "./lib/secretBox.js";
 
 export interface AppOptions {
   db: PrismaClient;
@@ -33,6 +35,10 @@ export interface AppOptions {
   whatsapp?: WhatsAppSender | null;
   /** Public site address, used to build guest portal links. */
   publicBaseUrl?: string;
+  /** TTLock client for door codes; null when not configured. */
+  lock?: LockClient | null;
+  /** Encrypts door codes at rest (derived from SESSION_SECRET in production). */
+  secretBox?: SecretBox;
 }
 
 export function createApp({
@@ -45,6 +51,8 @@ export function createApp({
   bookingLimit = 10,
   whatsapp = null,
   publicBaseUrl = "http://localhost:5173",
+  lock = null,
+  secretBox = makeSecretBox("development-only-secret-not-for-production", "door-codes"),
 }: AppOptions) {
   const app = express();
 
@@ -84,7 +92,7 @@ export function createApp({
 
   app.use("/api/health", healthRouter(db));
   app.use("/api/public", publicRouter(db, { whatsapp, bookingLimit }));
-  app.use("/api/guest", guestRouter(db));
+  app.use("/api/guest", guestRouter(db, { secretBox }));
 
   app.use("/api/auth", requireSameOrigin(allowedOrigins), loadSession(db, secureCookies));
   app.use("/api/auth", authRouter(db, { secureCookies, loginLimit }));
@@ -93,7 +101,7 @@ export function createApp({
     res.set("Cache-Control", "no-store");
     next();
   });
-  app.use("/api/admin", adminRouter(db, { whatsapp, publicBaseUrl }));
+  app.use("/api/admin", adminRouter(db, { whatsapp, publicBaseUrl, lock, secretBox }));
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "المسار غير موجود" });

@@ -19,6 +19,12 @@ import {
 } from "../../services/bookings.js";
 import { buildContract } from "../../services/contract.js";
 import { issueGuestLink, revokeGuestLinks } from "../../services/guestAccess.js";
+import { currentDoorCode, issueDoorCode, revokeDoorCodes } from "../../services/doorCodes.js";
+import { notifyOwner } from "../../services/notifications.js";
+import type { LockClient } from "../../services/ttlock.js";
+import type { SecretBox } from "../../lib/secretBox.js";
+import { getSetting } from "../../settings/registry.js";
+import { requireRole } from "../../auth/session.js";
 import type { WhatsAppSender } from "../../services/notifications.js";
 
 const statuses = ["NEW", "AWAITING_PAYMENT", "AWAITING_VERIFICATION", "CONFIRMED", "CANCELLED", "REJECTED", "EXPIRED", "COMPLETED"] as const;
@@ -57,7 +63,10 @@ function summarize<T extends { payments: { amount: Prisma.Decimal; status: strin
   };
 }
 
-export function bookingsRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender | null; publicBaseUrl: string }) {
+export function bookingsRouter(
+  db: PrismaClient,
+  opts: { whatsapp: WhatsAppSender | null; publicBaseUrl: string; lock: LockClient | null; secretBox: SecretBox },
+) {
   const router = Router();
 
   router.get("/", async (req, res) => {
@@ -98,6 +107,7 @@ export function bookingsRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSende
         confirmedBy: { select: { name: true } },
         // Never the token itself — only its status.
         accessTokens: { select: { id: true, createdAt: true, expiresAt: true, revokedAt: true, lastUsedAt: true }, orderBy: { createdAt: "desc" } },
+        doorCodes: { select: { id: true, status: true, startsAt: true, endsAt: true, error: true, createdAt: true, deletedAt: true }, orderBy: { createdAt: "desc" } },
       },
     });
     if (!b) throw new HttpError(404, "الحجز غير موجود");
@@ -108,6 +118,9 @@ export function bookingsRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSende
     });
     res.json({
       ...b,
+      // The clear-text door code is shown to the owner only.
+      doorCode: req.user!.role === "OWNER" ? await currentDoorCode(db, opts.secretBox, b.id) : null,
+      lockConfigured: Boolean(opts.lock),
       paid: acceptedPaid(b.payments).toFixed(2),
       allowedTransitions: TRANSITIONS[b.status],
       statusLabel: STATUS_LABELS[b.status],
@@ -164,7 +177,37 @@ export function bookingsRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSende
       z.object({ status: z.enum(statuses), reason: z.string().trim().max(500).nullable().optional() }),
       req.body,
     );
-    res.json(await changeStatus(db, req, id, status as BookingStatus, reason ?? null));
+    const updated = await changeStatus(db, req, id, status as BookingStatus, reason ?? null);
+
+    // Door code follows the booking: created on confirmation, deleted on cancellation/rejection.
+    // Lock problems never undo the status change; the owner is told and can retry from the booking page.
+    const lockSettings = await getSetting(db, "doorLock");
+    if (opts.lock && lockSettings.enabled) {
+      if (status === "CONFIRMED") {
+        await issueDoorCode(db, opts.lock, opts.secretBox, id, req).catch((err) =>
+          notifyOwner(db, { type: "SYSTEM", title: `تعذر إنشاء رقم الباب ${updated.reference}`, body: err instanceof Error ? err.message : "خطأ", bookingId: id }, null),
+        );
+      } else if (status === "CANCELLED" || status === "REJECTED") {
+        const failures = await revokeDoorCodes(db, opts.lock, id, req);
+        if (failures > 0) {
+          await notifyOwner(db, { type: "SYSTEM", title: `تعذر حذف رقم الباب ${updated.reference}`, body: "احذفه من تطبيق TTLock أو أعد المحاولة من صفحة الحجز.", bookingId: id }, null);
+        }
+      }
+    }
+    res.json(updated);
+  });
+
+  router.post("/:id/door-code", requireRole("OWNER"), async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    const row = await issueDoorCode(db, opts.lock, opts.secretBox, id, req);
+    res.status(201).json({ id: row.id, startsAt: row.startsAt, endsAt: row.endsAt, code: await currentDoorCode(db, opts.secretBox, id) });
+  });
+
+  router.delete("/:id/door-code", requireRole("OWNER"), async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    const failures = await revokeDoorCodes(db, opts.lock, id, req);
+    if (failures > 0) throw new HttpError(502, "تعذر حذف رقم الباب من القفل. حاول مرة أخرى أو احذفه من تطبيق TTLock.");
+    res.status(204).end();
   });
 
   router.patch("/:id", async (req, res) => {

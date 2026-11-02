@@ -6,6 +6,8 @@ import { HttpError, parse } from "../lib/http.js";
 import { hashToken } from "../lib/tokens.js";
 import { todayInRiyadh, toIsoDate } from "../lib/dates.js";
 import { getSettings } from "../settings/registry.js";
+import { currentDoorCode } from "../services/doorCodes.js";
+import type { SecretBox } from "../lib/secretBox.js";
 
 const tokenParam = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{40,60}$/) });
 
@@ -13,7 +15,7 @@ const tokenParam = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{40,60}$/) 
  * Guest portal API. The only credential is the private link's random token; nothing here is
  * reachable by booking reference, guest name or phone.
  */
-export function guestRouter(db: PrismaClient) {
+export function guestRouter(db: PrismaClient, opts: { secretBox: SecretBox }) {
   const router = Router();
 
   router.use(
@@ -54,6 +56,8 @@ export function guestRouter(db: PrismaClient) {
     const s = await getSettings(db, ["general", "stay", "houseRules", "contact", "guestPortal"]);
     const start = toIsoDate(b.startDate);
     const showCodes = s.guestPortal.showCodesFrom === "IMMEDIATELY" || todayInRiyadh() >= start;
+    // A booking's own TTLock code takes the place of the fixed entry code.
+    const doorCode = showCodes ? await currentDoorCode(db, opts.secretBox, b.id) : null;
 
     res.json({
       siteName: s.general.name,
@@ -69,7 +73,7 @@ export function guestRouter(db: PrismaClient) {
       contact: s.contact,
       location: s.general.location,
       codes: showCodes
-        ? { entryCode: s.guestPortal.entryCode, wifiName: s.guestPortal.wifiName, wifiPassword: s.guestPortal.wifiPassword }
+        ? { entryCode: doorCode ?? s.guestPortal.entryCode, wifiName: s.guestPortal.wifiName, wifiPassword: s.guestPortal.wifiPassword }
         : null,
       codesAvailableOn: showCodes ? null : start,
       expiresAt: access.expiresAt,

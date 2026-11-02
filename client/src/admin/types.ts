@@ -82,6 +82,10 @@ export interface BookingDetail {
   paid: string;
   allowedTransitions: BookingStatus[];
   accessTokens: { id: string; createdAt: string; expiresAt: string; revokedAt: string | null; lastUsedAt: string | null }[];
+  doorCodes: { id: string; status: "ACTIVE" | "DELETED" | "FAILED"; startsAt: string; endsAt: string; error: string | null; createdAt: string; deletedAt: string | null }[];
+  /** Clear-text current door code (owner only). */
+  doorCode: string | null;
+  lockConfigured: boolean;
   history: { id: string; action: string; details: Record<string, unknown> | null; createdAt: string; user: { name: string } | null }[];
 }
 

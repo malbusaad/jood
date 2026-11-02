@@ -5,6 +5,8 @@ import { prisma } from "./lib/prisma.js";
 import { createApp } from "./app.js";
 import { metaWhatsAppSender, whatsAppConfigFromEnv } from "./services/notifications.js";
 import { expireStaleBookings } from "./services/bookings.js";
+import { ttlockClient, ttlockConfigFromEnv } from "./services/ttlock.js";
+import { makeSecretBox } from "./lib/secretBox.js";
 
 const env = loadEnv();
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +19,11 @@ const app = createApp({
   secureCookies: env.NODE_ENV === "production",
   allowedOrigins: [new URL(env.PUBLIC_BASE_URL).origin],
   publicBaseUrl: env.PUBLIC_BASE_URL,
+  secretBox: makeSecretBox(env.SESSION_SECRET, "door-codes"),
+  lock: (() => {
+    const cfg = ttlockConfigFromEnv();
+    return cfg ? ttlockClient(cfg) : null;
+  })(),
   whatsapp: (() => {
     const cfg = whatsAppConfigFromEnv();
     return cfg ? metaWhatsAppSender(cfg) : null;

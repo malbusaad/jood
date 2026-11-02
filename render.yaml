@@ -35,6 +35,17 @@ services:
         sync: false
       - key: WHATSAPP_TEMPLATE_NAME
         sync: false
+      # قفل الباب TTLock (اختياري)
+      - key: TTLOCK_CLIENT_ID
+        sync: false
+      - key: TTLOCK_CLIENT_SECRET
+        sync: false
+      - key: TTLOCK_USERNAME
+        sync: false
+      - key: TTLOCK_PASSWORD
+        sync: false
+      - key: TTLOCK_LOCK_ID
+        sync: false
 
 databases:
   - name: jood-db

@@ -62,7 +62,7 @@ function booking(overrides: Partial<BookingDetail> = {}): BookingDetail {
     cancelledAt: null, cancelReason: null, contractSentAt: null, contractAcceptedAt: null, createdAt: "2026-11-01T10:00:00.000Z",
     guest: { id: "g1", name: "سارة القحطاني", phone: "966501234567", email: null, notes: null },
     items: [{ id: "i1", date: "2026-12-10", price: "1200.00", resource: { id: "full", name: "الاستراحة كاملة", kind: "FULL" } }],
-    payments: [], paid: "0.00", allowedTransitions: ["AWAITING_PAYMENT", "CONFIRMED", "REJECTED", "CANCELLED"], accessTokens: [], history: [],
+    payments: [], paid: "0.00", allowedTransitions: ["AWAITING_PAYMENT", "CONFIRMED", "REJECTED", "CANCELLED"], accessTokens: [], doorCodes: [], doorCode: null, lockConfigured: false, history: [],
     ...overrides,
   };
 }
@@ -203,6 +203,46 @@ describe("guest portal link", () => {
     expect(screen.getByText("لم يفتحه الضيف بعد.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "إلغاء الرابط" }));
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
+  });
+});
+
+describe("door code", () => {
+  it("shows the confirmed booking's TTLock code to the owner and re-issues it", async () => {
+    let state = booking({
+      status: "CONFIRMED", paid: "1200.00", allowedTransitions: ["CANCELLED"], lockConfigured: true, doorCode: "482915",
+      doorCodes: [{ id: "d1", status: "ACTIVE", startsAt: "2026-12-10T11:00:00Z", endsAt: "2026-12-11T01:00:00Z", error: null, createdAt: "2026-11-02T10:00:00Z", deletedAt: null }],
+    });
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/bookings/b1": () => [200, state],
+        "POST /api/admin/bookings/b1/door-code": () => {
+          state = { ...state, doorCode: "739251" };
+          return [201, { code: "739251" }];
+        },
+      },
+      OWNER,
+    );
+    vi.stubGlobal("confirm", () => true);
+    renderAt("/admin/bookings/b1");
+    expect(await screen.findByText("482915")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "إصدار رقم جديد" }));
+    expect(await screen.findByText("739251")).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings/b1/door-code")).toBe(true);
+  });
+
+  it("shows why TTLock failed and offers a retry", async () => {
+    mockAdminApi(
+      {
+        "GET /api/admin/bookings/b1": () => [200, booking({
+          status: "CONFIRMED", paid: "1200.00", allowedTransitions: ["CANCELLED"], lockConfigured: true,
+          doorCodes: [{ id: "d1", status: "FAILED", startsAt: "2026-12-10T11:00:00Z", endsAt: "2026-12-11T01:00:00Z", error: "TTLock -3002: gateway offline", createdAt: "2026-11-02T10:00:00Z", deletedAt: null }],
+        })],
+      },
+      OWNER,
+    );
+    renderAt("/admin/bookings/b1");
+    expect(await screen.findByText(/تعذر إنشاء الرقم: TTLock -3002: gateway offline/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
   });
 });
 

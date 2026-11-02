@@ -191,6 +191,14 @@ export const settingDefinitions = {
       showCodesFrom: "CHECKIN_DAY",
     },
   },
+  doorLock: {
+    public: false,
+    schema: z.object({
+      /** إنشاء رقم باب مؤقت لكل حجز عند تأكيده (TTLock) */
+      enabled: z.boolean(),
+    }),
+    initial: { enabled: false },
+  },
   notifications: {
     public: false,
     schema: z.object({

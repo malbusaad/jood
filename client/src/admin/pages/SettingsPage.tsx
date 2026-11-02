@@ -115,6 +115,13 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
+    key: "doorLock",
+    title: "قفل الباب (TTLock)",
+    intro: "عند تأكيد أي حجز يُنشأ رقم سري مؤقت للباب صالح من وقت الدخول إلى وقت الخروج، ويظهر للضيف في بوابته مكان رمز الدخول الثابت، ويُحذف من القفل إذا أُلغي الحجز.",
+    ownerOnly: true,
+    fields: [{ path: "enabled", label: "إنشاء رقم باب لكل حجز مؤكد", type: "bool" }],
+  },
+  {
     key: "notifications",
     title: "إشعارات واتساب",
     intro: "يصلك إشعار بكل طلب حجز جديد في لوحة الإدارة دائمًا. للإرسال إلى واتساب أيضًا يلزم حساب WhatsApp Business API (Meta) تضاف بياناته في إعدادات الخادم.",
@@ -317,11 +324,54 @@ function PasswordCard() {
   );
 }
 
+interface LockStatus {
+  configured: boolean;
+  enabled: boolean;
+  lockId?: string;
+  locks: { lockId: string; name: string; hasGateway: boolean | null; battery: number | null }[];
+  error: string | null;
+}
+
+function LockStatusCard() {
+  const [tick, setTick] = useState(0);
+  const { data, loading } = useApi<LockStatus>(tick ? `/api/admin/lock/status?t=${tick}` : null);
+  return (
+    <Card title="اختبار الاتصال بـ TTLock">
+      <p className="-mt-2 mb-3 text-sm text-jood-ink/60">
+        بيانات حساب TTLock (Client ID وClient Secret واسم المستخدم وكلمة المرور ورقم القفل) تُضاف في إعدادات الخادم على Render، ولا تُكتب هنا.
+      </p>
+      <Button variant="secondary" busy={loading && tick > 0} onClick={() => setTick((t) => t + 1)}>اختبار الاتصال</Button>
+      {data && (
+        <div className="mt-4 text-sm">
+          {!data.configured ? (
+            <p className="text-amber-800">لم تُضف بيانات TTLock في إعدادات الخادم بعد.</p>
+          ) : data.error ? (
+            <p className="text-red-800">تعذر الاتصال: {data.error}</p>
+          ) : (
+            <ul className="space-y-1">
+              {data.locks.map((l) => (
+                <li key={l.lockId} className={l.lockId === data.lockId ? "font-medium text-emerald-800" : ""}>
+                  {l.name || l.lockId} <span dir="ltr">({l.lockId})</span>
+                  {l.lockId === data.lockId && " — القفل المستخدم"}
+                  {l.hasGateway === false && " · غير متصل ببوابة"}
+                  {l.battery !== null && ` · البطارية ${l.battery}%`}
+                </li>
+              ))}
+              {!data.locks.some((l) => l.lockId === data.lockId) && <li className="text-red-800">رقم القفل المحدد في الإعدادات غير موجود في الحساب.</li>}
+            </ul>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 const TABS = [
   { id: "site", label: "الموقع", keys: ["general", "stay", "contact", "gathern"] },
   { id: "booking", label: "الحجز والدفع", keys: ["bookingPolicy", "bank", "cancellationPolicy"] },
   { id: "rules", label: "التعليمات والأسئلة", keys: ["houseRules", "faqs"] },
   { id: "guest", label: "بوابة الضيف", keys: ["guestPortal"] },
+  { id: "lock", label: "قفل الباب", keys: ["doorLock", "lockStatus"] },
   { id: "contract", label: "العقد", keys: ["contract"] },
   { id: "notify", label: "الإشعارات", keys: ["notifications"] },
   { id: "account", label: "حسابي", keys: [] },
@@ -355,6 +405,7 @@ export default function SettingsPage() {
           {current.keys.map((key) => {
             if (key === "faqs") return <FaqEditor key={key} initial={(data.faqs as { q: string; a: string }[]) ?? []} canEdit={owner} />;
             if (key === "contract") return owner ? <ContractEditor key={key} initial={(data.contract as { template: string })?.template ?? ""} /> : null;
+            if (key === "lockStatus") return owner ? <LockStatusCard key={key} /> : null;
             const def = SECTIONS.find((s) => s.key === key)!;
             if (def.ownerOnly && !owner) return null;
             return <Section key={key} def={def} initial={data[key]} canEdit={owner} />;
