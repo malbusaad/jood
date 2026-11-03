@@ -86,6 +86,7 @@ export default function BookingDetailPage() {
             <dl className="grid gap-2 text-sm sm:grid-cols-2">
               <div><dt className="text-jood-ink/55">الاسم</dt><dd className="font-medium"><Link to={`/admin/guests/${b.guest.id}`} className="underline decoration-jood-gold/50">{b.guest.name}</Link></dd></div>
               <div><dt className="text-jood-ink/55">الجوال / واتساب</dt><dd dir="ltr" className="text-end sm:text-start"><a href={`tel:+${b.guest.phone}`}>+{b.guest.phone}</a></dd></div>
+              <div><dt className="text-jood-ink/55">رقم الهوية / الإقامة</dt><dd dir="ltr" className="text-end sm:text-start">{b.guest.nationalId ?? <span className="text-amber-700">غير مسجل</span>}</dd></div>
               {b.guest.email && <div><dt className="text-jood-ink/55">البريد</dt><dd dir="ltr" className="text-end sm:text-start">{b.guest.email}</dd></div>}
               {b.guestCount && <div><dt className="text-jood-ink/55">عدد الضيوف</dt><dd>{b.guestCount}</dd></div>}
               {b.guestNotes && <div className="sm:col-span-2"><dt className="text-jood-ink/55">ملاحظات الضيف</dt><dd className="whitespace-pre-line">{b.guestNotes}</dd></div>}

@@ -76,7 +76,7 @@ export interface BookingDetail {
   contractSentAt: string | null;
   contractAcceptedAt: string | null;
   createdAt: string;
-  guest: { id: string; name: string; phone: string; email: string | null; notes: string | null };
+  guest: { id: string; name: string; phone: string; email: string | null; notes: string | null; nationalId: string | null; nationalIdMasked: string | null };
   items: { id: string; date: string; price: string; resource: ResourceRef }[];
   payments: Payment[];
   paid: string;
@@ -150,6 +150,7 @@ export interface Guest {
   phone: string;
   email: string | null;
   notes: string | null;
+  nationalIdMasked: string | null;
   createdAt: string;
   bookingCount: number;
   lastStay: string | null;

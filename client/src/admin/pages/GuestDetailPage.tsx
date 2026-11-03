@@ -8,9 +8,10 @@ import BookingRow from "./BookingRow";
 
 export default function GuestDetailPage() {
   const { id } = useParams();
-  const { data: g, error, loading, reload } = useApi<Guest & { bookings: BookingSummary[] }>(`/api/admin/guests/${id}`);
+  const { data: g, error, loading, reload } = useApi<Guest & { nationalId: string | null; bookings: BookingSummary[] }>(`/api/admin/guests/${id}`);
   const m = useMutation();
   const [notes, setNotes] = useState<string | null>(null);
+  const [nid, setNid] = useState<string | null>(null);
   if (loading && !g) return <Loading />;
   if (!g) return <ErrorNote>{error ?? "الضيف غير موجود"}</ErrorNote>;
   return (
@@ -30,11 +31,20 @@ export default function GuestDetailPage() {
             <div><dt className="text-jood-ink/55">الجوال</dt><dd dir="ltr" className="text-end">+{g.phone}</dd></div>
             {g.email && <div><dt className="text-jood-ink/55">البريد</dt><dd dir="ltr" className="text-end">{g.email}</dd></div>}
           </dl>
+          <Field label="رقم الهوية أو الإقامة" className="mt-4">
+            <input inputMode="numeric" dir="ltr" maxLength={10} value={nid ?? g.nationalId ?? ""} onChange={(e) => setNid(e.target.value)} className={`${inputClass} text-end`} />
+          </Field>
           <Field label="ملاحظات" className="mt-4">
             <textarea rows={4} value={notes ?? g.notes ?? ""} onChange={(e) => setNotes(e.target.value)} className={inputClass} />
           </Field>
           <ErrorNote>{m.error}</ErrorNote>
-          <Button className="mt-2" variant="secondary" busy={m.busy} disabled={notes === null} onClick={async () => { if (await m.run(`/api/admin/guests/${g.id}`, "PATCH", { notes: notes || null })) { setNotes(null); reload(); } }}>
+          <Button className="mt-2" variant="secondary" busy={m.busy} disabled={notes === null && nid === null}
+            onClick={async () => {
+              const body: Record<string, unknown> = {};
+              if (notes !== null) body.notes = notes || null;
+              if (nid !== null) body.nationalId = nid.trim() || null;
+              if (await m.run(`/api/admin/guests/${g.id}`, "PATCH", body)) { setNotes(null); setNid(null); reload(); }
+            }}>
             حفظ
           </Button>
         </Card>

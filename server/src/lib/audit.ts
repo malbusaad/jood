@@ -5,7 +5,7 @@ import { clientIp } from "./http.js";
 type Db = PrismaClient | Prisma.TransactionClient;
 
 /** Keys whose values must never be written to the audit log. */
-const SECRET_KEYS = /password|token|secret|hash|iban|wifi|entryCode/i;
+const SECRET_KEYS = /password|token|secret|hash|iban|wifi|entryCode|nationalId/i;
 
 function redact(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redact);

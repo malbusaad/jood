@@ -256,6 +256,7 @@ const PLACEHOLDERS = [
   ["{{issueDate}}", "تاريخ إصدار العقد"],
   ["{{guestName}}", "اسم المستأجر"],
   ["{{guestPhone}}", "جوال المستأجر"],
+  ["{{guestIdNumber}}", "رقم هوية/إقامة المستأجر"],
   ["{{startDate}} / {{endDate}}", "تاريخ الدخول والخروج"],
   ["{{checkIn}} / {{checkOut}}", "وقت الدخول والخروج"],
   ["{{total}}", "مبلغ الحجز"],
@@ -328,7 +329,7 @@ interface LockStatus {
   configured: boolean;
   enabled: boolean;
   lockId?: string;
-  locks: { lockId: string; name: string; hasGateway: boolean | null; battery: number | null }[];
+  locks: { lockId: string; name: string; hasGateway: boolean | null; battery: number | null; authorizedAdmin: boolean }[];
   error: string | null;
 }
 
@@ -346,13 +347,21 @@ function LockStatusCard() {
           {!data.configured ? (
             <p className="text-amber-800">لم تُضف بيانات TTLock في إعدادات الخادم بعد.</p>
           ) : data.error ? (
-            <p className="text-red-800">تعذر الاتصال: {data.error}</p>
+            <div className="space-y-1">
+              <p className="text-red-800">تعذر الاتصال: {data.error}</p>
+              {data.error.includes("10007") && (
+                <p className="text-jood-ink/70">
+                  TTLock رفضت الحساب. استخدم حساب تطبيق TTLock الذي يملك القفل، وليس حساب منصة المطورين؛ وإذا كان الحسابان بنفس البريد فاستخدم حسابًا آخر للتطبيق.
+                </p>
+              )}
+            </div>
           ) : (
             <ul className="space-y-1">
               {data.locks.map((l) => (
                 <li key={l.lockId} className={l.lockId === data.lockId ? "font-medium text-emerald-800" : ""}>
                   {l.name || l.lockId} <span dir="ltr">({l.lockId})</span>
                   {l.lockId === data.lockId && " — القفل المستخدم"}
+                  {!l.authorizedAdmin && " · الحساب ليس مسؤولًا مخوّلًا على هذا القفل"}
                   {l.hasGateway === false && " · غير متصل ببوابة"}
                   {l.battery !== null && ` · البطارية ${l.battery}%`}
                 </li>

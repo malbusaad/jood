@@ -4,7 +4,7 @@ import type { BookingStatus, Prisma, PrismaClient } from "@prisma/client";
 import { HttpError, parse, uuidParam } from "../../lib/http.js";
 import { audit } from "../../lib/audit.js";
 import { addDays, fromIsoDate, isoDate, todayInRiyadh } from "../../lib/dates.js";
-import { phoneSchema } from "../../settings/registry.js";
+import { nationalIdSchema, phoneSchema } from "../../settings/registry.js";
 import {
   STATUS_LABELS,
   TRANSITIONS,
@@ -40,6 +40,16 @@ const listQuery = z.object({
   channel: z.enum(["WEBSITE", "GATHERN", "MANUAL"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
 });
+
+/** A guest as the admin sees it: the encrypted ID is replaced by the clear number (full) or its last 4 digits (lists). */
+function presentGuest<G extends { nationalIdEnc: string | null; nationalIdLast4: string | null }>(g: G, box: SecretBox | null) {
+  const { nationalIdEnc, nationalIdLast4, ...rest } = g;
+  return {
+    ...rest,
+    nationalId: box && nationalIdEnc ? box.open(nationalIdEnc) : null,
+    nationalIdMasked: nationalIdLast4 ? `••••••${nationalIdLast4}` : null,
+  };
+}
 
 /** Phone search that matches both local (05…) and international (9665…) forms. */
 function phoneFragment(q: string): string | null {
@@ -118,6 +128,7 @@ export function bookingsRouter(
     });
     res.json({
       ...b,
+      guest: presentGuest(b.guest, opts.secretBox),
       // The clear-text door code is shown to the owner only.
       doorCode: req.user!.role === "OWNER" ? await currentDoorCode(db, opts.secretBox, b.id) : null,
       lockConfigured: Boolean(opts.lock),
@@ -137,6 +148,8 @@ export function bookingsRouter(
         nights: z.number().int().min(1).max(30),
         name: z.string().trim().min(2).max(120),
         phone: phoneSchema,
+        // Optional for bookings recorded by the owner (e.g. from Gathern), required on the website.
+        nationalId: nationalIdSchema.nullable().optional(),
         email: z.email().max(254).nullable().optional(),
         guestCount: z.number().int().min(1).max(500).nullable().optional(),
         adminNotes: z.string().trim().max(2000).nullable().optional(),
@@ -150,12 +163,12 @@ export function bookingsRouter(
         resourceIds: input.resourceIds,
         startDate: input.startDate,
         nights: input.nights,
-        guest: { name: input.name, phone: input.phone, email: input.email ?? null },
+        guest: { name: input.name, phone: input.phone, email: input.email ?? null, nationalId: input.nationalId ?? null },
         guestCount: input.guestCount ?? null,
         adminNotes: input.adminNotes ?? null,
         channel: input.channel,
       },
-      { req, whatsapp: opts.whatsapp },
+      { req, whatsapp: opts.whatsapp, secretBox: opts.secretBox },
     );
     res.status(201).json(booking);
   });
@@ -269,7 +282,7 @@ export function bookingsRouter(
 
   router.get("/:id/contract", async (req, res) => {
     const { id } = parse(uuidParam, req.params);
-    res.json(await buildContract(db, id));
+    res.json(await buildContract(db, id, opts.secretBox));
   });
 
   return router;
@@ -355,7 +368,7 @@ export function dashboardRouter(db: PrismaClient) {
   return router;
 }
 
-export function guestsRouter(db: PrismaClient) {
+export function guestsRouter(db: PrismaClient, box: SecretBox) {
   const router = Router();
   router.get("/", async (req, res) => {
     const { q } = parse(z.object({ q: z.string().trim().max(100).optional() }), req.query);
@@ -368,7 +381,7 @@ export function guestsRouter(db: PrismaClient) {
       take: 100,
     });
     res.json(
-      guests.map(({ bookings, _count, ...g }) => ({ ...g, bookingCount: _count.bookings, lastStay: bookings[0]?.startDate ?? null })),
+      guests.map(({ bookings, _count, ...g }) => ({ ...presentGuest(g, null), bookingCount: _count.bookings, lastStay: bookings[0]?.startDate ?? null })),
     );
   });
   router.get("/:id", async (req, res) => {
@@ -378,17 +391,31 @@ export function guestsRouter(db: PrismaClient) {
       include: { bookings: { include: listInclude, orderBy: { startDate: "desc" } } },
     });
     if (!g) throw new HttpError(404, "الضيف غير موجود");
-    res.json({ ...g, bookings: g.bookings.map(summarize) });
+    res.json({ ...presentGuest(g, box), bookings: g.bookings.map(summarize) });
   });
   router.patch("/:id", async (req, res) => {
     const { id } = parse(uuidParam, req.params);
     const input = parse(
-      z.object({ name: z.string().trim().min(2).max(120), email: z.email().max(254).nullable(), notes: z.string().trim().max(2000).nullable() }).partial(),
+      z
+        .object({
+          name: z.string().trim().min(2).max(120),
+          email: z.email().max(254).nullable(),
+          notes: z.string().trim().max(2000).nullable(),
+          nationalId: nationalIdSchema.nullable(),
+        })
+        .partial(),
       req.body,
     );
-    const g = await db.guest.update({ where: { id }, data: input });
+    const { nationalId, ...rest } = input;
+    const data = {
+      ...rest,
+      ...(nationalId !== undefined
+        ? { nationalIdEnc: nationalId ? box.seal(nationalId) : null, nationalIdLast4: nationalId ? nationalId.slice(-4) : null }
+        : {}),
+    };
+    const g = await db.guest.update({ where: { id }, data });
     await audit(db, req, { action: "guest.update", entityType: "guest", entityId: id, details: input });
-    res.json(g);
+    res.json(presentGuest(g, box));
   });
   return router;
 }

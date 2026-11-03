@@ -3,9 +3,8 @@ import { createHash } from "node:crypto";
 /**
  * TTLock Open Platform client (https://open.ttlock.com).
  *
- * Built from TTLock's published API (OAuth2 password grant; /v3/keyboardPwd/add and /delete with
- * addType/deleteType 2 = through the gateway). Not yet verified against the owner's lock — that
- * happens after deployment, from the admin panel's connection test.
+ * Built from TTLock's published API docs (OAuth2 password grant at /oauth2/token; /v3/keyboardPwd/add
+ * and /delete with addType/deleteType 2 = through the gateway; /v3/lock/list).
  */
 export interface TTLockConfig {
   clientId: string;
@@ -42,7 +41,7 @@ export interface LockClient {
   lockId: string;
   addPasscode(p: { code: string; name: string; startsAt: Date; endsAt: Date }): Promise<{ externalId: string }>;
   deletePasscode(externalId: string): Promise<void>;
-  listLocks(): Promise<{ lockId: string; name: string; hasGateway: boolean | null; battery: number | null }[]>;
+  listLocks(): Promise<{ lockId: string; name: string; hasGateway: boolean | null; battery: number | null; authorizedAdmin: boolean }[]>;
 }
 
 type Json = Record<string, unknown>;
@@ -66,7 +65,8 @@ export function ttlockClient(config: TTLockConfig, fetchImpl: typeof fetch = fet
 
   async function accessToken(): Promise<string> {
     if (token && token.expiresAt > Date.now() + 60_000) return token.value;
-    // TTLock expects the account password as a lowercase MD5 hex digest (its documented format).
+    // Per TTLock's current "Get access token" docs: TTLock App account (never the open-platform developer
+    // account) and the password as a lowercase MD5 hex digest.
     const body = await post("/oauth2/token", {
       clientId: config.clientId,
       clientSecret: config.clientSecret,
@@ -110,14 +110,35 @@ export function ttlockClient(config: TTLockConfig, fetchImpl: typeof fetch = fet
       await call("/v3/keyboardPwd/delete", { lockId: config.lockId, keyboardPwdId: externalId, deleteType: 2 });
     },
     async listLocks() {
-      const body = await call("/v3/lock/list", { pageNo: 1, pageSize: 50 });
-      const list = (body.list as Json[] | undefined) ?? [];
-      return list.map((l) => ({
-        lockId: String(l.lockId),
-        name: String(l.lockAlias ?? l.lockName ?? ""),
-        hasGateway: l.hasGateway === undefined ? null : Number(l.hasGateway) === 1,
-        battery: l.electricQuantity === undefined ? null : Number(l.electricQuantity),
-      }));
+      // lock/list returns only locks the account owns. A lock shared with the account as an
+      // "authorized admin" eKey (the recommended setup) appears only in key/list, so merge both.
+      const [owned, keys] = await Promise.all([
+        call("/v3/lock/list", { pageNo: 1, pageSize: 50 }),
+        call("/v3/key/list", { pageNo: 1, pageSize: 50 }),
+      ]);
+      const byId = new Map<string, { lockId: string; name: string; hasGateway: boolean | null; battery: number | null; authorizedAdmin: boolean }>();
+      for (const l of ((owned.list as Json[] | undefined) ?? [])) {
+        byId.set(String(l.lockId), {
+          lockId: String(l.lockId),
+          name: String(l.lockAlias ?? l.lockName ?? ""),
+          hasGateway: l.hasGateway === undefined ? null : Number(l.hasGateway) === 1,
+          battery: l.electricQuantity === undefined ? null : Number(l.electricQuantity),
+          authorizedAdmin: true,
+        });
+      }
+      for (const k of ((keys.list as Json[] | undefined) ?? [])) {
+        const id = String(k.lockId);
+        if (byId.has(id)) continue;
+        byId.set(id, {
+          lockId: id,
+          name: String(k.lockAlias ?? k.lockName ?? ""),
+          hasGateway: k.hasGateway === undefined ? null : Number(k.hasGateway) === 1,
+          battery: k.electricQuantity === undefined ? null : Number(k.electricQuantity),
+          // keyRight 1 = authorized admin: may add and delete passcodes.
+          authorizedAdmin: Number(k.keyRight) === 1,
+        });
+      }
+      return [...byId.values()];
     },
   };
 }

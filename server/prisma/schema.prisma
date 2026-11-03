@@ -183,14 +183,18 @@ model PricingRule {
 // ─────────────────────────── الضيوف والحجوزات ───────────────────────────
 
 model Guest {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String   @db.VarChar(120)
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String   @db.VarChar(120)
   /// رقم الجوال/واتساب بصيغة دولية موحدة، مثل 9665XXXXXXXX
-  phone     String   @unique @db.VarChar(20)
-  email     String?  @db.VarChar(254)
-  notes     String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  phone           String   @unique @db.VarChar(20)
+  email           String?  @db.VarChar(254)
+  /// رقم الهوية الوطنية أو الإقامة — مشفّر (AES-256-GCM)، ولا يُخزَّن نصًا صريحًا
+  nationalIdEnc   String?  @map("national_id_enc")
+  /// آخر 4 أرقام للعرض في القوائم فقط
+  nationalIdLast4 String?  @map("national_id_last4") @db.VarChar(4)
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   bookings Booking[]
 

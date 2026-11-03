@@ -2,7 +2,8 @@ import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
-import { getSetting, getSettings, phoneSchema, publicSettingKeys } from "../settings/registry.js";
+import { fullNameSchema, getSetting, getSettings, nationalIdSchema, phoneSchema, publicSettingKeys } from "../settings/registry.js";
+import type { SecretBox } from "../lib/secretBox.js";
 import { addDays, eachDate, isoDate, todayInRiyadh } from "../lib/dates.js";
 import { HttpError, parse } from "../lib/http.js";
 import { resolveRule } from "../services/pricing.js";
@@ -22,8 +23,9 @@ const selectionSchema = z.object({
 });
 
 const bookingSchema = selectionSchema.extend({
-  name: z.string().trim().min(2, "الاسم مطلوب").max(120),
+  name: fullNameSchema,
   phone: phoneSchema,
+  nationalId: nationalIdSchema,
   email: z.email().max(254).nullable().optional(),
   guestCount: z.number().int().min(1).max(500).nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
@@ -33,7 +35,7 @@ const bookingSchema = selectionSchema.extend({
 });
 
 /** Public catalog API. Returns only public settings — never bank details, codes or guest data. */
-export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender | null; bookingLimit: number }) {
+export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender | null; bookingLimit: number; secretBox: SecretBox }) {
   const router = Router();
 
   router.get("/site", async (_req, res) => {
@@ -167,12 +169,12 @@ export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender 
         resourceIds: input.resourceIds,
         startDate: input.startDate,
         nights: input.nights,
-        guest: { name: input.name, phone: input.phone, email: input.email ?? null },
+        guest: { name: input.name, phone: input.phone, email: input.email ?? null, nationalId: input.nationalId },
         guestCount: input.guestCount ?? null,
         guestNotes: input.notes ?? null,
         channel: "WEBSITE",
       },
-      { whatsapp: opts.whatsapp },
+      { whatsapp: opts.whatsapp, secretBox: opts.secretBox },
     );
     // Bank details go only to the person who just sent a request — never to the public pages.
     const bank = await getSetting(db, "bank");

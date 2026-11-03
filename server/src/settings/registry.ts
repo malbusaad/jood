@@ -9,9 +9,31 @@ const text = (max: number) => z.string().trim().min(1).max(max);
 /** Saudi/international phone in digits only, e.g. 9665XXXXXXXX */
 export const phoneSchema = z
   .string()
-  .transform((v) => v.replace(/[\s\-+()]/g, ""))
+  .transform((v) => asciiDigits(v).replace(/[\s\-+()]/g, ""))
   .transform((v) => (v.startsWith("05") && v.length === 10 ? `966${v.slice(1)}` : v))
   .pipe(z.string().regex(/^\d{9,15}$/, "رقم الجوال غير صحيح"));
+
+/** Converts Arabic-Indic / Persian digits to ASCII, so "١٠٢٣" and "1023" are the same. */
+export function asciiDigits(v: string): string {
+  return v.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
+}
+
+/** Saudi national ID (starts with 1) or Iqama (starts with 2): 10 digits. */
+export const nationalIdSchema = z
+  .string()
+  .transform((v) => asciiDigits(v).replace(/[\s-]/g, ""))
+  .pipe(z.string().regex(/^[12]\d{9}$/, "رقم الهوية أو الإقامة 10 أرقام ويبدأ بـ 1 أو 2"));
+
+/** Full (three-part) name, e.g. «محمد عبدالله الدوسري». */
+export const fullNameSchema = z
+  .string()
+  .transform((v) => v.trim().replace(/\s+/g, " "))
+  .pipe(
+    z
+      .string()
+      .max(120)
+      .refine((v) => v.split(" ").filter((w) => w.length >= 2).length >= 3, "اكتب الاسم الثلاثي (الاسم واسم الأب واسم العائلة)"),
+  );
 
 /**
  * Every site setting: its schema, its initial value, and whether it may be sent to the public site.

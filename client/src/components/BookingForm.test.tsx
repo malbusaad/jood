@@ -41,8 +41,15 @@ describe("booking form", () => {
     expect(screen.getByText("1,700 ريال")).toBeInTheDocument(); // 1,200 + 500 deposit
 
     const submit = screen.getByRole("button", { name: "إرسال طلب الحجز" });
-    expect(submit).toBeDisabled(); // name, phone and terms required
-    fireEvent.change(screen.getByLabelText("الاسم"), { target: { value: "سارة" } });
+    expect(submit).toBeDisabled(); // name, ID, phone and terms required
+    fireEvent.change(screen.getByLabelText("الاسم الثلاثي"), { target: { value: "سارة القحطاني" } });
+    fireEvent.change(screen.getByLabelText(/رقم الهوية أو الإقامة/), { target: { value: "1023456789" } });
+    fireEvent.change(screen.getByLabelText("رقم الجوال (واتساب)"), { target: { value: "0501234567" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /أوافق عليها/ }));
+    expect(submit).toBeDisabled(); // two-part name is not enough
+    fireEvent.click(screen.getByRole("checkbox", { name: /أوافق عليها/ }));
+    fireEvent.change(screen.getByLabelText("الاسم الثلاثي"), { target: { value: "سارة محمد القحطاني" } });
+    fireEvent.change(screen.getByLabelText(/رقم الهوية أو الإقامة/), { target: { value: "1023456789" } });
     fireEvent.change(screen.getByLabelText("رقم الجوال (واتساب)"), { target: { value: "0501234567" } });
     fireEvent.click(screen.getByRole("checkbox", { name: /أوافق عليها/ }));
     expect(screen.getByText(/هذا طلب حجز وليس حجزًا مؤكدًا/)).toBeInTheDocument();
@@ -56,7 +63,7 @@ describe("booking form", () => {
 
     const call = fetchMock.mock.calls.find(([u]) => String(u) === "/api/public/bookings")!;
     const body = JSON.parse(String((call[1] as RequestInit).body));
-    expect(body).toMatchObject({ resourceIds: ["full"], startDate: "2026-11-12", nights: 1, name: "سارة", phone: "0501234567", acceptTerms: true, website: "" });
+    expect(body).toMatchObject({ resourceIds: ["full"], startDate: "2026-11-12", nights: 1, name: "سارة محمد القحطاني", nationalId: "1023456789", phone: "0501234567", acceptTerms: true, website: "" });
     expect(body.total).toBeUndefined(); // the browser never sends a price
   });
 
@@ -76,7 +83,8 @@ describe("booking form", () => {
     renderApp("/booking", { options: [FULL], booking: { status: 409, body: { error: "عذرًا، حُجز هذا الموعد للتو. اختر تاريخًا آخر." } } });
     await pickThursday();
     await screen.findByText("الإجمالي المستحق");
-    fireEvent.change(screen.getByLabelText("الاسم"), { target: { value: "سارة" } });
+    fireEvent.change(screen.getByLabelText("الاسم الثلاثي"), { target: { value: "سارة محمد القحطاني" } });
+    fireEvent.change(screen.getByLabelText(/رقم الهوية أو الإقامة/), { target: { value: "1023456789" } });
     fireEvent.change(screen.getByLabelText("رقم الجوال (واتساب)"), { target: { value: "0501234567" } });
     fireEvent.click(screen.getByRole("checkbox", { name: /أوافق عليها/ }));
     fireEvent.click(screen.getByRole("button", { name: "إرسال طلب الحجز" }));

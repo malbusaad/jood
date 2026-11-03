@@ -8,6 +8,7 @@ import { getSetting } from "../settings/registry.js";
 import { quote, type Quote } from "./pricing.js";
 import { blockedResources, lockKeysByResource, resourcesCompatible } from "./conflicts.js";
 import { notifyOwner, type WhatsAppSender } from "./notifications.js";
+import type { SecretBox } from "../lib/secretBox.js";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -109,7 +110,7 @@ export async function evaluateSelection(db: Db, sel: Selection, opts: { channel:
 }
 
 export interface NewBooking extends Selection {
-  guest: { name: string; phone: string; email?: string | null };
+  guest: { name: string; phone: string; email?: string | null; nationalId?: string | null };
   guestCount?: number | null;
   guestNotes?: string | null;
   adminNotes?: string | null;
@@ -129,7 +130,7 @@ async function nextReference(tx: Prisma.TransactionClient): Promise<string> {
 export async function createBooking(
   db: PrismaClient,
   input: NewBooking,
-  ctx: { req?: Request; whatsapp: WhatsAppSender | null },
+  ctx: { req?: Request; whatsapp: WhatsAppSender | null; secretBox: SecretBox },
 ) {
   await expireStaleBookings(db);
 
@@ -137,10 +138,14 @@ export async function createBooking(
   try {
     created = await db.$transaction(async (tx) => {
       const ev = await evaluateSelection(tx, input, { channel: input.channel });
+      // The ID number is personal data: stored encrypted, with only the last 4 digits in clear for lists.
+      const id = input.guest.nationalId
+        ? { nationalIdEnc: ctx.secretBox.seal(input.guest.nationalId), nationalIdLast4: input.guest.nationalId.slice(-4) }
+        : {};
       const guest = await tx.guest.upsert({
         where: { phone: input.guest.phone },
-        create: { name: input.guest.name, phone: input.guest.phone, email: input.guest.email ?? null },
-        update: { name: input.guest.name, ...(input.guest.email ? { email: input.guest.email } : {}) },
+        create: { name: input.guest.name, phone: input.guest.phone, email: input.guest.email ?? null, ...id },
+        update: { name: input.guest.name, ...(input.guest.email ? { email: input.guest.email } : {}), ...id },
       });
 
       const booking = await tx.booking.create({

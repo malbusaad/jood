@@ -28,7 +28,7 @@ function fakeLock(opts: { failAdd?: boolean; failDelete?: boolean } = {}) {
       codes.delete(id);
     },
     async listLocks() {
-      return [{ lockId: "123456", name: "باب الاستراحة", hasGateway: true, battery: 87 }];
+      return [{ lockId: "123456", name: "باب الاستراحة", hasGateway: true, battery: 87, authorizedAdmin: true }];
     },
   };
   return lock;
@@ -52,7 +52,7 @@ async function setup(lock: LockClient | null, start = nextSunday()) {
   const app = makeApp({ lock, secretBox: box, publicBaseUrl: "https://jood.example" });
   const { agent } = await signedIn(app);
   const full = await fullResource();
-  const r = await request(app).post("/api/public/bookings").send({ resourceIds: [full.id], startDate: start, nights: 1, name: "سارة", phone: "0500000001", acceptTerms: true });
+  const r = await request(app).post("/api/public/bookings").send({ resourceIds: [full.id], startDate: start, nights: 1, name: "سارة محمد القحطاني", nationalId: "1023456789", phone: "0500000001", acceptTerms: true });
   const booking = await db.booking.findUniqueOrThrow({ where: { reference: r.body.reference } });
   await agent.post(`/api/admin/bookings/${booking.id}/payments`).send({ method: "BANK_TRANSFER", amount: Number(booking.totalAmount) }).expect(201);
   return { app, agent, booking, start };
@@ -252,6 +252,24 @@ describe("TTLock API client", () => {
     );
     const client = ttlockClient(ttlockConfigFromEnv(env)!, fetchMock as unknown as typeof fetch);
     await expect(client.addPasscode({ code: "482915", name: "x", startsAt: new Date(), endsAt: new Date() })).rejects.toThrow("TTLock -3002: The gateway is offline");
+  });
+});
+
+describe("TTLock lock discovery", () => {
+  it("finds locks shared with the account as an authorized-admin eKey (empty lock/list)", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200 });
+      if (url.endsWith("/oauth2/token")) return json({ access_token: "t", expires_in: 7776000 });
+      if (url.endsWith("/v3/lock/list")) return json({ list: [] });
+      if (url.endsWith("/v3/key/list")) return json({ list: [{ lockId: 25121023, lockAlias: "استراحة الجود", keyRight: 1, keyStatus: "110401" }, { lockId: 777, lockAlias: "other", keyRight: 0 }] });
+      return json({ errcode: -1 });
+    });
+    const env = { TTLOCK_CLIENT_ID: "cid", TTLOCK_CLIENT_SECRET: "cs", TTLOCK_USERNAME: "u@mail", TTLOCK_PASSWORD: "p", TTLOCK_LOCK_ID: "25121023" };
+    const locks = await ttlockClient(ttlockConfigFromEnv(env)!, fetchMock as unknown as typeof fetch).listLocks();
+    expect(locks).toEqual([
+      { lockId: "25121023", name: "استراحة الجود", hasGateway: null, battery: null, authorizedAdmin: true },
+      { lockId: "777", name: "other", hasGateway: null, battery: null, authorizedAdmin: false },
+    ]);
   });
 });
 
