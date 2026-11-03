@@ -346,7 +346,14 @@ function LockStatusCard() {
           {!data.configured ? (
             <p className="text-amber-800">لم تُضف بيانات TTLock في إعدادات الخادم بعد.</p>
           ) : data.error ? (
-            <p className="text-red-800">تعذر الاتصال: {data.error}</p>
+            <div className="space-y-1">
+              <p className="text-red-800">تعذر الاتصال: {data.error}</p>
+              {data.error.includes("10007") && (
+                <p className="text-jood-ink/70">
+                  TTLock رفضت الحساب. استخدم حساب تطبيق TTLock الذي يملك القفل، وليس حساب منصة المطورين؛ وإذا كان الحسابان بنفس البريد فاستخدم حسابًا آخر للتطبيق.
+                </p>
+              )}
+            </div>
           ) : (
             <ul className="space-y-1">
               {data.locks.map((l) => (

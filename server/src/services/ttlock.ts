@@ -65,11 +65,11 @@ export function ttlockClient(config: TTLockConfig, fetchImpl: typeof fetch = fet
 
   async function accessToken(): Promise<string> {
     if (token && token.expiresAt > Date.now() + 60_000) return token.value;
-    // The token endpoint uses snake_case client_id/client_secret (unlike the /v3 endpoints, which take
-    // clientId), and the account password as a lowercase MD5 hex digest — per TTLock's OAuth2 docs.
+    // Per TTLock's current "Get access token" docs: TTLock App account (never the open-platform developer
+    // account) and the password as a lowercase MD5 hex digest.
     const body = await post("/oauth2/token", {
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
       username: config.username,
       password: createHash("md5").update(config.password).digest("hex"),
     });
