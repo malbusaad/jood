@@ -328,7 +328,7 @@ interface LockStatus {
   configured: boolean;
   enabled: boolean;
   lockId?: string;
-  locks: { lockId: string; name: string; hasGateway: boolean | null; battery: number | null }[];
+  locks: { lockId: string; name: string; hasGateway: boolean | null; battery: number | null; authorizedAdmin: boolean }[];
   error: string | null;
 }
 
@@ -360,6 +360,7 @@ function LockStatusCard() {
                 <li key={l.lockId} className={l.lockId === data.lockId ? "font-medium text-emerald-800" : ""}>
                   {l.name || l.lockId} <span dir="ltr">({l.lockId})</span>
                   {l.lockId === data.lockId && " — القفل المستخدم"}
+                  {!l.authorizedAdmin && " · الحساب ليس مسؤولًا مخوّلًا على هذا القفل"}
                   {l.hasGateway === false && " · غير متصل ببوابة"}
                   {l.battery !== null && ` · البطارية ${l.battery}%`}
                 </li>
