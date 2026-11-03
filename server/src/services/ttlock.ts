@@ -3,9 +3,8 @@ import { createHash } from "node:crypto";
 /**
  * TTLock Open Platform client (https://open.ttlock.com).
  *
- * Built from TTLock's published API (OAuth2 password grant; /v3/keyboardPwd/add and /delete with
- * addType/deleteType 2 = through the gateway). Not yet verified against the owner's lock — that
- * happens after deployment, from the admin panel's connection test.
+ * Built from TTLock's published API docs (OAuth2 password grant at /oauth2/token; /v3/keyboardPwd/add
+ * and /delete with addType/deleteType 2 = through the gateway; /v3/lock/list).
  */
 export interface TTLockConfig {
   clientId: string;
@@ -66,10 +65,11 @@ export function ttlockClient(config: TTLockConfig, fetchImpl: typeof fetch = fet
 
   async function accessToken(): Promise<string> {
     if (token && token.expiresAt > Date.now() + 60_000) return token.value;
-    // TTLock expects the account password as a lowercase MD5 hex digest (its documented format).
+    // The token endpoint uses snake_case client_id/client_secret (unlike the /v3 endpoints, which take
+    // clientId), and the account password as a lowercase MD5 hex digest — per TTLock's OAuth2 docs.
     const body = await post("/oauth2/token", {
-      clientId: config.clientId,
-      clientSecret: config.clientSecret,
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
       username: config.username,
       password: createHash("md5").update(config.password).digest("hex"),
     });

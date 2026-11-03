@@ -229,7 +229,9 @@ describe("TTLock API client", () => {
     const login = requests[0]!;
     expect(login.url).toBe("https://euapi.ttlock.com/oauth2/token");
     expect(login.body.get("password")).toBe(createHash("md5").update("lock-pass").digest("hex"));
-    expect(Object.fromEntries(login.body)).toMatchObject({ clientId: "cid", clientSecret: "csecret", username: "owner@mail" });
+    // The token endpoint takes snake_case client credentials (TTLock OAuth2 docs); the /v3 endpoints take clientId.
+    expect(Object.fromEntries(login.body)).toMatchObject({ client_id: "cid", client_secret: "csecret", username: "owner@mail" });
+    expect(login.body.has("clientId")).toBe(false);
 
     const add = requests.find((x) => x.url.endsWith("/v3/keyboardPwd/add") && x.body.get("accessToken") !== "tok1")!;
     expect(Object.fromEntries(add.body)).toMatchObject({
