@@ -24,7 +24,7 @@ export function adminRouter(
   router.use("/dashboard", dashboardRouter(db));
   router.use("/bookings", bookingsRouter(db, opts));
   router.use("/calendar", calendarRouter(db));
-  router.use("/guests", guestsRouter(db));
+  router.use("/guests", guestsRouter(db, opts.secretBox));
   router.use("/settings", settingsRouter(db));
   router.use("/amenities", amenitiesRouter(db));
   router.use("/resources", requireRole("OWNER"), resourcesRouter(db));

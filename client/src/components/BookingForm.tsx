@@ -65,7 +65,7 @@ export default function BookingForm() {
   const [mode, setMode] = useState<"FULL" | "PART">("FULL");
   const [parts, setParts] = useState<string[]>([]);
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", guestCount: "", notes: "", acceptTerms: false, website: "" });
+  const [form, setForm] = useState({ name: "", nationalId: "", phone: "", email: "", guestCount: "", notes: "", acceptTerms: false, website: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<BookingReceipt | null>(null);
@@ -138,6 +138,7 @@ export default function BookingForm() {
           startDate: toIso(date),
           nights,
           name: form.name,
+          nationalId: form.nationalId,
           phone: form.phone,
           email: form.email || null,
           guestCount: form.guestCount ? Number(form.guestCount) : null,
@@ -299,8 +300,13 @@ export default function BookingForm() {
         <Step n={4} title="بياناتك">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="text-sm">الاسم</span>
-              <input required autoComplete="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={`mt-1 ${input}`} />
+              <span className="text-sm">الاسم الثلاثي</span>
+              <input required autoComplete="name" placeholder="الاسم واسم الأب واسم العائلة" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={`mt-1 ${input}`} />
+            </label>
+            <label className="block">
+              <span className="text-sm">رقم الهوية أو الإقامة</span>
+              <input required inputMode="numeric" dir="ltr" maxLength={10} placeholder="1xxxxxxxxx" value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value })} className={`mt-1 text-end ${input}`} />
+              <span className="mt-1 block text-xs text-jood-ink/60">يُستخدم في عقد الإيجار فقط، ويُحفظ مشفّرًا ولا يظهر في الموقع.</span>
             </label>
             <label className="block">
               <span className="text-sm">رقم الجوال (واتساب)</span>
@@ -333,7 +339,7 @@ export default function BookingForm() {
           </p>
           <button
             type="submit"
-            disabled={submitting || !form.name.trim() || !form.phone.trim() || !form.acceptTerms}
+            disabled={submitting || form.name.trim().split(/\s+/).length < 3 || !form.nationalId.trim() || !form.phone.trim() || !form.acceptTerms}
             className="mt-5 inline-flex items-center gap-2 rounded-full bg-jood-green px-8 py-3.5 text-jood-beige transition hover:bg-jood-green-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting && <Loader2 aria-hidden className="size-4 animate-spin" />}

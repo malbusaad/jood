@@ -91,7 +91,7 @@ export function createApp({
   );
 
   app.use("/api/health", healthRouter(db));
-  app.use("/api/public", publicRouter(db, { whatsapp, bookingLimit }));
+  app.use("/api/public", publicRouter(db, { whatsapp, bookingLimit, secretBox }));
   app.use("/api/guest", guestRouter(db, { secretBox }));
 
   app.use("/api/auth", requireSameOrigin(allowedOrigins), loadSession(db, secureCookies));

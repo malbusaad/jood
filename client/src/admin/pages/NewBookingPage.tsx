@@ -11,7 +11,7 @@ export default function NewBookingPage() {
   const navigate = useNavigate();
   const { data } = useApi<{ resources: (ResourceRef & { active: boolean })[] }>("/api/admin/resources");
   const m = useMutation();
-  const [f, setF] = useState({ channel: "GATHERN" as "GATHERN" | "MANUAL", startDate: "", nights: 1, resourceIds: [] as string[], name: "", phone: "", guestCount: "", adminNotes: "" });
+  const [f, setF] = useState({ channel: "GATHERN" as "GATHERN" | "MANUAL", startDate: "", nights: 1, resourceIds: [] as string[], name: "", nationalId: "", phone: "", guestCount: "", adminNotes: "" });
   const [quote, setQuote] = useState<Q | null>(null);
 
   const resources = data?.resources.filter((r) => r.active) ?? [];
@@ -43,6 +43,7 @@ export default function NewBookingPage() {
       nights: f.nights,
       resourceIds: f.resourceIds,
       name: f.name,
+      nationalId: f.nationalId.trim() || null,
       phone: f.phone,
       guestCount: f.guestCount ? Number(f.guestCount) : null,
       adminNotes: f.adminNotes || null,
@@ -87,6 +88,9 @@ export default function NewBookingPage() {
           )}
           <Field label="اسم الضيف">
             <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className={inputClass} />
+          </Field>
+          <Field label="رقم الهوية أو الإقامة (اختياري)">
+            <input inputMode="numeric" dir="ltr" maxLength={10} value={f.nationalId} onChange={(e) => setF({ ...f, nationalId: e.target.value })} className={`${inputClass} text-end`} />
           </Field>
           <Field label="الجوال (واتساب)">
             <input type="tel" dir="ltr" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className={`${inputClass} text-end`} placeholder="05xxxxxxxx" />

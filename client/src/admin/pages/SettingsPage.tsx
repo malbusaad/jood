@@ -256,6 +256,7 @@ const PLACEHOLDERS = [
   ["{{issueDate}}", "تاريخ إصدار العقد"],
   ["{{guestName}}", "اسم المستأجر"],
   ["{{guestPhone}}", "جوال المستأجر"],
+  ["{{guestIdNumber}}", "رقم هوية/إقامة المستأجر"],
   ["{{startDate}} / {{endDate}}", "تاريخ الدخول والخروج"],
   ["{{checkIn}} / {{checkOut}}", "وقت الدخول والخروج"],
   ["{{total}}", "مبلغ الحجز"],

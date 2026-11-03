@@ -31,6 +31,7 @@ export default function GuestsPage() {
                   <span>
                     <span className="font-medium">{g.name}</span>
                     <span dir="ltr" className="ms-2 text-sm text-jood-ink/60">+{g.phone}</span>
+                    {g.nationalIdMasked && <span dir="ltr" className="ms-2 text-xs text-jood-ink/50">ID {g.nationalIdMasked}</span>}
                   </span>
                   <span className="text-sm text-jood-ink/60">
                     {g.bookingCount} حجز{g.lastStay ? ` · آخر حجز ${dayLabel(g.lastStay)}` : ""}

@@ -28,7 +28,7 @@ beforeEach(async () => {
 afterAll(() => db.$disconnect());
 
 function guest(i = 1) {
-  return { name: `ضيف ${i}`, phone: `05000000${String(i).padStart(2, "0")}`, acceptTerms: true };
+  return { name: `ضيف تجربة رقم${i}`, nationalId: "10234567" + String(i).padStart(2, "0"), phone: `05000000${String(i).padStart(2, "0")}`, acceptTerms: true };
 }
 
 async function makePart(slug: string, amenitySlugs: string[], price: number | null = 400) {
@@ -40,7 +40,7 @@ async function makePart(slug: string, amenitySlugs: string[], price: number | nu
   return part;
 }
 
-function book(resourceIds: string[], startDate: string, nights = 1, g = guest()) {
+function book(resourceIds: string[], startDate: string, nights = 1, g: Record<string, unknown> = guest()) {
   return request(app).post("/api/public/bookings").send({ resourceIds, startDate, nights, ...g });
 }
 
@@ -350,7 +350,7 @@ describe("admin views", () => {
     const { agent } = await signedIn(app);
     const full = await fullResource();
     await book([full.id], SUN, 1, guest(1));
-    await book([full.id], THU, 1, { ...guest(2), name: "محمد العتيبي" });
+    await book([full.id], THU, 1, { ...guest(2), name: "محمد سعد العتيبي" });
     const all = await agent.get("/api/admin/bookings");
     expect(all.body.total).toBe(2);
     expect((await agent.get("/api/admin/bookings?q=العتيبي")).body.total).toBe(1);
@@ -401,13 +401,14 @@ describe("contract", () => {
   it("fills the approved template with the booking, the 500 SAR deposit and the cancellation policy", async () => {
     const { agent } = await signedIn(app);
     const full = await fullResource();
-    const r = await book([full.id], SUN, 2, { ...guest(), name: "سارة القحطاني" });
+    const r = await book([full.id], SUN, 2, { ...guest(), name: "سارة محمد القحطاني" });
     const b = await db.booking.findUniqueOrThrow({ where: { reference: r.body.reference } });
     const c = (await agent.get(`/api/admin/bookings/${b.id}/contract`)).body;
     const text = JSON.stringify(c.blocks);
     expect(c.reference).toBe(r.body.reference);
-    expect(text).toContain("سارة القحطاني");
+    expect(text).toContain("سارة محمد القحطاني");
     expect(text).toContain("966500000001");
+    expect(text).toContain("1023456701"); // national ID
     expect(text).toContain(r.body.reference);
     expect(text).toContain("500 ريال");
     expect(text).toContain("1,900 ريال");
@@ -495,5 +496,65 @@ describe("payment deadline", () => {
     const b = await db.booking.findUniqueOrThrow({ where: { reference: r.body.reference } });
     const c = (await agent.get(`/api/admin/bookings/${b.id}/contract`)).body;
     expect(JSON.stringify(c.blocks)).toContain("خلال 15 ساعة من طلب الدفع");
+  });
+});
+
+describe("triple name and national ID", () => {
+  it("requires a three-part name and a valid Saudi ID or iqama number", async () => {
+    const full = await fullResource();
+    const twoWords = await book([full.id], SUN, 1, { ...guest(), name: "سارة القحطاني" });
+    expect(twoWords.status).toBe(400);
+    expect(JSON.stringify(twoWords.body)).toContain("الاسم الثلاثي");
+    const { nationalId: _omit, ...noId } = guest();
+    expect((await book([full.id], SUN, 1, noId)).status).toBe(400);
+    for (const bad of ["123", "3023456789", "10234567890", "abcdefghij"]) {
+      expect((await book([full.id], SUN, 1, { ...guest(), nationalId: bad })).status).toBe(400);
+    }
+    expect(await db.booking.count()).toBe(0);
+  });
+
+  it("accepts Arabic digits and spaces, and stores the ID encrypted", async () => {
+    const full = await fullResource();
+    const r = await book([full.id], SUN, 1, { ...guest(), name: "  سارة   محمد القحطاني ", nationalId: "٢٠٢٣ ٤٥٦ ٧٨٩" });
+    expect(r.status).toBe(201);
+    const g = await db.guest.findFirstOrThrow();
+    expect(g.name).toBe("سارة محمد القحطاني");
+    expect(g.nationalIdLast4).toBe("6789");
+    expect(g.nationalIdEnc).toBeTruthy();
+    expect(g.nationalIdEnc).not.toContain("2023456789");
+    // Never returned by the public booking response or audit log.
+    expect(JSON.stringify(r.body)).not.toContain("2023456789");
+    const logs = await db.auditLog.findMany();
+    expect(JSON.stringify(logs)).not.toContain("2023456789");
+  });
+
+  it("shows the full ID only in guest and booking details, masked in lists, and lets the owner correct it", async () => {
+    const { agent } = await signedIn(app);
+    const full = await fullResource();
+    const r = await book([full.id], SUN, 1, { ...guest(), nationalId: "1023456789" });
+    const b = await db.booking.findUniqueOrThrow({ where: { reference: r.body.reference } });
+    const detail = (await agent.get(`/api/admin/bookings/${b.id}`)).body;
+    expect(detail.guest.nationalId).toBe("1023456789");
+    expect(detail.guest).not.toHaveProperty("nationalIdEnc");
+    const list = (await agent.get("/api/admin/guests")).body;
+    expect(JSON.stringify(list)).not.toContain("1023456789");
+    expect(list[0].nationalIdMasked).toBe("••••••6789");
+    const patched = await agent.patch(`/api/admin/guests/${b.guestId}`).send({ nationalId: "2111111111" });
+    expect(patched.status).toBe(200);
+    expect(patched.body.nationalId).toBe("2111111111");
+    expect((await agent.patch(`/api/admin/guests/${b.guestId}`).send({ nationalId: "999" })).status).toBe(400);
+    const log = await db.auditLog.findFirstOrThrow({ where: { action: "guest.update" } });
+    expect(JSON.stringify(log.details)).not.toContain("2111111111");
+  });
+
+  it("lets admin manual bookings omit the ID and warns in the contract", async () => {
+    const { agent } = await signedIn(app);
+    const full = await fullResource();
+    const res = await agent
+      .post("/api/admin/bookings")
+      .send({ resourceIds: [full.id], startDate: THU, nights: 1, name: "ضيف جاذر إن", phone: "0551234567", channel: "GATHERN" });
+    expect(res.status).toBe(201);
+    const c = (await agent.get(`/api/admin/bookings/${res.body.id}/contract`)).body;
+    expect(c.warnings).toContain("رقم هوية/إقامة المستأجر غير مسجل في بيانات الضيف.");
   });
 });

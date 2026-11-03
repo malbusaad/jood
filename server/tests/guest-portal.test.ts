@@ -27,7 +27,7 @@ afterAll(() => db.$disconnect());
 async function confirmedBooking(start = nextSunday(), phone = "0500000001") {
   const { agent } = await signedIn(app);
   const full = await fullResource();
-  const r = await request(app).post("/api/public/bookings").send({ resourceIds: [full.id], startDate: start, nights: 1, name: "سارة القحطاني", phone, acceptTerms: true });
+  const r = await request(app).post("/api/public/bookings").send({ resourceIds: [full.id], startDate: start, nights: 1, name: "سارة محمد القحطاني", nationalId: "1023456789", phone, acceptTerms: true });
   expect(r.status).toBe(201);
   const b = await db.booking.findUniqueOrThrow({ where: { reference: r.body.reference } });
   await agent.post(`/api/admin/bookings/${b.id}/payments`).send({ method: "BANK_TRANSFER", amount: Number(b.totalAmount) }).expect(201);
@@ -43,7 +43,7 @@ describe("issuing the guest link", () => {
   it("only after confirmation", async () => {
     const { agent } = await signedIn(app);
     const full = await fullResource();
-    const r = await request(app).post("/api/public/bookings").send({ resourceIds: [full.id], startDate: nextSunday(), nights: 1, name: "ضيف", phone: "0500000009", acceptTerms: true });
+    const r = await request(app).post("/api/public/bookings").send({ resourceIds: [full.id], startDate: nextSunday(), nights: 1, name: "ضيف رقم تسعة", nationalId: "2023456789", phone: "0500000009", acceptTerms: true });
     const b = await db.booking.findUniqueOrThrow({ where: { reference: r.body.reference } });
     const res = await agent.post(`/api/admin/bookings/${b.id}/guest-link`).send({});
     expect(res.status).toBe(409);
@@ -89,7 +89,7 @@ describe("guest portal", () => {
     expect(res.status).toBe(200);
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(res.body).toMatchObject({
-      guestName: "سارة القحطاني",
+      guestName: "سارة محمد القحطاني",
       reference: booking.reference,
       checkIn: "14:00",
       checkOut: "04:00",
@@ -130,11 +130,11 @@ describe("guest portal", () => {
     const a = await confirmedBooking(nextSunday(), "0500000001");
     const linkA = (await a.agent.post(`/api/admin/bookings/${a.booking.id}/guest-link`).send({})).body;
     const full = await fullResource();
-    const r = await request(app).post("/api/public/bookings").send({ resourceIds: [full.id], startDate: addDays(nextSunday(), 2), nights: 1, name: "ضيف آخر", phone: "0500000002", acceptTerms: true });
+    const r = await request(app).post("/api/public/bookings").send({ resourceIds: [full.id], startDate: addDays(nextSunday(), 2), nights: 1, name: "ضيف آخر ثاني", nationalId: "2023456788", phone: "0500000002", acceptTerms: true });
     const res = await request(app).get(`/api/guest/${tokenOf(linkA.url)}`);
     expect(res.body.reference).toBe(a.booking.reference);
     expect(JSON.stringify(res.body)).not.toContain(r.body.reference);
-    expect(JSON.stringify(res.body)).not.toContain("ضيف آخر");
+    expect(JSON.stringify(res.body)).not.toContain("ضيف آخر ثاني");
   });
 });
 

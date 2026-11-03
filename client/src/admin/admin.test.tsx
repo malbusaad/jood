@@ -60,7 +60,7 @@ function booking(overrides: Partial<BookingDetail> = {}): BookingDetail {
     priceBreakdown: [{ date: "2026-12-10", resourceId: "full", resourceName: "الاستراحة كاملة", price: "1200.00" }],
     guestCount: 15, guestNotes: null, adminNotes: null, expiresAt: null, confirmedAt: null, confirmedBy: null,
     cancelledAt: null, cancelReason: null, contractSentAt: null, contractAcceptedAt: null, createdAt: "2026-11-01T10:00:00.000Z",
-    guest: { id: "g1", name: "سارة القحطاني", phone: "966501234567", email: null, notes: null },
+    guest: { id: "g1", name: "سارة القحطاني", phone: "966501234567", email: null, notes: null, nationalId: "1023456789", nationalIdMasked: "••••••6789" },
     items: [{ id: "i1", date: "2026-12-10", price: "1200.00", resource: { id: "full", name: "الاستراحة كاملة", kind: "FULL" } }],
     payments: [], paid: "0.00", allowedTransitions: ["AWAITING_PAYMENT", "CONFIRMED", "REJECTED", "CANCELLED"], accessTokens: [], doorCodes: [], doorCode: null, lockConfigured: false, history: [],
     ...overrides,

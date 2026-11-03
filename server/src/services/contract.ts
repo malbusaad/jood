@@ -4,6 +4,7 @@ import { toIsoDate, todayInRiyadh } from "../lib/dates.js";
 import { formatDateAr, formatSAR, formatTimeAr } from "../lib/format.js";
 import { getSettings } from "../settings/registry.js";
 import type { QuoteLine } from "./pricing.js";
+import type { SecretBox } from "../lib/secretBox.js";
 
 export type ContractBlock =
   | { type: "title"; text: string }
@@ -64,7 +65,7 @@ export function parseTemplate(
 }
 
 /** Builds the filled contract for one booking from the owner's template and current settings. */
-export async function buildContract(db: PrismaClient, bookingId: string): Promise<Contract> {
+export async function buildContract(db: PrismaClient, bookingId: string, box: SecretBox): Promise<Contract> {
   const booking = await db.booking.findUnique({
     where: { id: bookingId },
     include: { guest: true, items: { include: { resource: { select: { name: true, kind: true } } } } },
@@ -122,6 +123,9 @@ export async function buildContract(db: PrismaClient, bookingId: string): Promis
   const policyLines = (s.cancellationPolicy.text ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (policyLines.length === 0) warnings.push("سياسة الإلغاء غير محددة في الإعدادات.");
 
+  const guestIdNumber = booking.guest.nationalIdEnc ? box.open(booking.guest.nationalIdEnc) : null;
+  if (!guestIdNumber) warnings.push("رقم هوية/إقامة المستأجر غير مسجل في بيانات الضيف.");
+
   const hours = s.bookingPolicy.unpaidExpiryHours;
   const { blocks, unknown } = parseTemplate(
     s.contract.template,
@@ -130,6 +134,7 @@ export async function buildContract(db: PrismaClient, bookingId: string): Promis
       issueDate: formatDateAr(todayInRiyadh()),
       guestName: booking.guest.name,
       guestPhone: booking.guest.phone,
+      guestIdNumber: guestIdNumber ?? "—",
       checkIn: formatTimeAr(s.stay.checkIn),
       checkOut: formatTimeAr(s.stay.checkOut),
       deposit: formatSAR(deposit),
