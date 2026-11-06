@@ -10,6 +10,7 @@ import { resolveRule } from "../services/pricing.js";
 import { blockedResources } from "../services/conflicts.js";
 import { createBooking, evaluateSelection, expireStaleBookings } from "../services/bookings.js";
 import type { WhatsAppSender } from "../services/notifications.js";
+import { logoVersion, readLogo } from "../services/licenseLogo.js";
 
 const rangeSchema = z
   .object({ from: isoDate, to: isoDate })
@@ -39,7 +40,7 @@ export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender 
   const router = Router();
 
   router.get("/site", async (_req, res) => {
-    const [settings, amenities, fullResource, media] = await Promise.all([
+    const [settings, amenities, fullResource, media, licenseLogo] = await Promise.all([
       getSettings(db, publicSettingKeys),
       db.amenity.findMany({
         where: { visible: true },
@@ -55,6 +56,7 @@ export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender 
         orderBy: { sortOrder: "asc" },
         select: { id: true, kind: true, storageKey: true, alt: true, amenityId: true, isHero: true },
       }),
+      logoVersion(db),
     ]);
 
     // Base weekday price of the full rest house: index 0 = Sunday ... 6 = Saturday (null = no approved price).
@@ -68,6 +70,7 @@ export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender 
     res.set("Cache-Control", "public, max-age=60");
     res.json({
       ...settings,
+      tourismLicense: { ...settings.tourismLicense, logoUrl: licenseLogo ? `/api/public/license-logo?v=${licenseLogo}` : null },
       amenities,
       weekdayPrices,
       media: {
@@ -82,6 +85,16 @@ export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender 
           .map((m) => ({ url: mediaUrl(m.storageKey), alt: m.alt ?? "", amenityId: m.amenityId })),
       },
     });
+  });
+
+  /** The Ministry of Tourism logo uploaded by the owner (raster image, served from the database). */
+  router.get("/license-logo", async (_req, res) => {
+    const logo = await readLogo(db);
+    if (!logo) throw new HttpError(404, "لا يوجد شعار");
+    res.set("Content-Type", logo.mime);
+    res.set("Cache-Control", "public, max-age=86400");
+    res.set("Content-Security-Policy", "default-src 'none'");
+    res.send(logo.bytes);
   });
 
   /** Daily price and availability of the full rest house — used by the public calendar. */

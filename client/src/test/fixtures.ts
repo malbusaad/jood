@@ -25,6 +25,18 @@ export const siteFixture: SiteContent = {
     notice: "يمكنك إتمام الحجز عبر منصة جاذر إن، مع العلم بأن رسوم المنصة الإضافية قد تُطبق على السعر الأساسي وفقًا لشروط المنصة.",
   },
   cancellationPolicy: { text: null },
+  ticker: {
+    enabled: true,
+    items: [
+      { id: "welcome", text: "أهلًا وسهلًا بكم في استراحة الجود.", active: true },
+      { id: "book", text: "احجزوا موعدكم الآن.", active: true },
+      { id: "off", text: "عبارة معطلة", active: false },
+    ],
+    secondsPerItem: 8,
+    direction: "rtl",
+    mobile: "animate",
+  },
+  tourismLicense: { enabled: false, licenseNumber: null, text: "مرخصة من وزارة السياحة", logoUrl: null },
   amenities: [
     { id: "a1", slug: "tent", name: "الخيمة الأرضية", description: null, capacityText: "14 شخصًا", note: null, icon: "tent", available: true },
     { id: "a2", slug: "majlis", name: "المجلس", description: null, capacityText: "12 إلى 15 شخصًا", note: null, icon: "majlis", available: true },

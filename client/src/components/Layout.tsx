@@ -2,6 +2,7 @@ import { Suspense, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router";
 import LogoSlot from "./LogoSlot";
 import ScrollToTop from "./ScrollToTop";
+import NewsTicker from "./NewsTicker";
 import { useSiteContent } from "../hooks/useSiteContent";
 import { publicPages } from "../routes";
 
@@ -19,6 +20,7 @@ export default function Layout() {
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:right-2 focus:z-50 focus:rounded-md focus:bg-jood-gold focus:px-4 focus:py-2 focus:text-jood-green-950">
         انتقل إلى المحتوى
       </a>
+      <NewsTicker ticker={site.ticker} />
       <header className="sticky top-0 z-40 border-b border-white/5 bg-jood-green-950/90 text-jood-beige backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <Link to="/" onClick={() => setOpen(false)}>

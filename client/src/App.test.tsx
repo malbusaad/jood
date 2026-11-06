@@ -16,6 +16,47 @@ describe("home page", () => {
     expect(screen.getAllByText("1,200").length).toBeGreaterThan(0);
   });
 
+  it("no longer shows the calendar on the home page; «احجز الآن» leads to the booking page that has it", async () => {
+    renderApp("/");
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByRole("heading", { name: "الأسعار والإتاحة" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+    const links = screen.getAllByRole("link", { name: "احجز الآن" });
+    expect(links.length).toBeGreaterThanOrEqual(2);
+    for (const l of links) expect(l).toHaveAttribute("href", "/booking");
+  });
+
+  it("shows only the active ticker phrases, in order, on every page", async () => {
+    renderApp("/faq");
+    const bar = await screen.findByRole("region", { name: "أخبار الاستراحة" });
+    expect(within(bar).getAllByText("أهلًا وسهلًا بكم في استراحة الجود.").length).toBeGreaterThan(0);
+    expect(within(bar).queryByText("عبارة معطلة")).not.toBeInTheDocument();
+    const firstStrip = within(bar).getAllByRole("listitem").map((li) => li.textContent?.replace("✦", "").trim());
+    expect(firstStrip.slice(0, 2)).toEqual(["أهلًا وسهلًا بكم في استراحة الجود.", "احجزوا موعدكم الآن."]);
+  });
+
+  it("hides the ticker when the owner turns it off", async () => {
+    renderApp("/", { site: { ...siteFixture, ticker: { ...siteFixture.ticker, enabled: false } } });
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByRole("region", { name: "أخبار الاستراحة" })).not.toBeInTheDocument();
+  });
+
+  it("shows the tourism licence only once enabled with a real number, with the uploaded logo", async () => {
+    renderApp("/");
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByText("مرخصة من وزارة السياحة")).not.toBeInTheDocument();
+  });
+
+  it("renders the licence band with number and logo", async () => {
+    renderApp("/", {
+      site: { ...siteFixture, tourismLicense: { enabled: true, licenseNumber: "7300012345", text: "مرخصة من وزارة السياحة", logoUrl: "/api/public/license-logo?v=abc" } },
+    });
+    const band = await screen.findByRole("region", { name: "الترخيص" });
+    expect(within(band).getByText("مرخصة من وزارة السياحة")).toBeInTheDocument();
+    expect(within(band).getByText("7300012345")).toBeInTheDocument();
+    expect(within(band).getByRole("img", { name: "شعار وزارة السياحة" })).toHaveAttribute("src", "/api/public/license-logo?v=abc");
+  });
+
   it("shows check-in and check-out times from settings", async () => {
     renderApp("/");
     await screen.findByRole("heading", { level: 1 });

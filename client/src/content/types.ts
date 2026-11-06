@@ -49,6 +49,14 @@ export interface SiteContent {
   contact: { phone: string | null; whatsapp: string | null; email: string | null; mapUrl: string | null };
   gathern: { url: string | null; notice: string };
   cancellationPolicy: { text: string | null };
+  ticker: {
+    enabled: boolean;
+    items: { id: string; text: string; active: boolean }[];
+    secondsPerItem: number;
+    direction: "rtl" | "ltr";
+    mobile: "animate" | "static";
+  };
+  tourismLicense: { enabled: boolean; licenseNumber: string | null; text: string; logoUrl: string | null };
   amenities: Amenity[];
   /** السعر الأساسي للاستراحة كاملة: 0 = الأحد ... 6 = السبت (null = لا يوجد سعر معتمد) */
   weekdayPrices: (number | null)[];

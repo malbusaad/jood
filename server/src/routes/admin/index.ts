@@ -12,6 +12,10 @@ import type { WhatsAppSender } from "../../services/notifications.js";
 import type { LockClient } from "../../services/ttlock.js";
 import type { SecretBox } from "../../lib/secretBox.js";
 import { getSetting } from "../../settings/registry.js";
+import { deleteLogo, logoVersion, saveLogo } from "../../services/licenseLogo.js";
+import { audit } from "../../lib/audit.js";
+import { parse } from "../../lib/http.js";
+import { z } from "zod";
 
 /** Everything under /api/admin requires a signed-in admin. Sensitive areas are owner-only. */
 export function adminRouter(
@@ -32,6 +36,23 @@ export function adminRouter(
   router.use("/users", requireRole("OWNER"), usersRouter(db));
   router.use("/notifications", notificationsRouter(db));
   router.use("/audit", requireRole("OWNER"), auditRouter(db));
+
+  /** Ministry of Tourism logo: uploaded by the owner as base64 JSON (PNG/JPG/WebP, max 512 KB). */
+  router.get("/license-logo", async (_req, res) => {
+    const v = await logoVersion(db);
+    res.json({ url: v ? `/api/public/license-logo?v=${v}` : null });
+  });
+  router.put("/license-logo", requireRole("OWNER"), async (req, res) => {
+    const { data } = parse(z.object({ data: z.string().min(1).max(800_000) }), req.body);
+    const saved = await saveLogo(db, data);
+    await audit(db, req, { action: "license_logo.upload", entityType: "setting", entityId: "tourismLicenseLogo", details: { size: saved.size, mime: saved.mime } });
+    res.json({ url: `/api/public/license-logo?v=${saved.version}` });
+  });
+  router.delete("/license-logo", requireRole("OWNER"), async (req, res) => {
+    await deleteLogo(db);
+    await audit(db, req, { action: "license_logo.delete", entityType: "setting", entityId: "tourismLicenseLogo" });
+    res.status(204).end();
+  });
 
   /** Door lock connection test: shows whether TTLock is configured and lists the account's locks. */
   router.get("/lock/status", requireRole("OWNER"), async (_req, res) => {
