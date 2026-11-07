@@ -81,6 +81,8 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
   const resourceNames = [...new Map(booking.items.map((i) => [i.resourceId, i.resource.name])).values()];
   const total = Number(booking.totalAmount);
   const deposit = Number(booking.depositAmount);
+  const discount = Number(booking.discountAmount);
+  const subtotal = total + discount;
 
   const details: ContractBlock[] = [
     {
@@ -91,6 +93,12 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
         ["الخروج", `${formatDateAr(end)} — الساعة ${formatTimeAr(s.stay.checkOut)}`],
         ["عدد الأيام", String(days)],
         ...(booking.guestCount ? ([["عدد الضيوف المتوقع", String(booking.guestCount)]] as [string, string][]) : []),
+        ...(discount > 0
+          ? ([
+              ["مبلغ الحجز قبل الخصم", formatSAR(subtotal)],
+              [`الخصم${booking.discountCode ? ` (كود ${booking.discountCode})` : ""}`, `− ${formatSAR(discount)}`],
+            ] as [string, string][])
+          : []),
         ["مبلغ الحجز", formatSAR(total)],
         ["مبلغ التأمين (مسترد)", formatSAR(deposit)],
         ["الإجمالي المستحق", formatSAR(total + deposit)],
@@ -103,7 +111,7 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
         item: l.resourceName,
         price: formatSAR(l.price),
       })),
-      total: formatSAR(total),
+      total: formatSAR(subtotal),
     },
   ];
 

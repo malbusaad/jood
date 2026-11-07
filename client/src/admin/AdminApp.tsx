@@ -18,6 +18,7 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const AmenitiesPage = lazy(() => import("./pages/AmenitiesPage"));
 const ResourcesPage = lazy(() => import("./pages/ResourcesPage"));
 const PricingPage = lazy(() => import("./pages/PricingPage"));
+const DiscountsPage = lazy(() => import("./pages/DiscountsPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
 const AuditPage = lazy(() => import("./pages/AuditPage"));
 
@@ -55,6 +56,8 @@ export default function AdminApp() {
           <Route path="amenities" element={<AmenitiesPage />} />
           <Route path="resources" element={<ResourcesPage />} />
           <Route path="pricing" element={<PricingPage />} />
+          <Route path="special-prices" element={<PricingPage key="special" mode="special" />} />
+          <Route path="discounts" element={<DiscountsPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="audit" element={<AuditPage />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />

@@ -64,6 +64,8 @@ export interface BookingDetail {
   endDate: string;
   totalAmount: string;
   depositAmount: string;
+  discountAmount?: string;
+  discountCode?: string | null;
   priceBreakdown: { date: string; resourceId: string; resourceName: string; price: string }[];
   guestCount: number | null;
   guestNotes: string | null;

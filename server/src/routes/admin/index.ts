@@ -5,6 +5,7 @@ import { settingsRouter } from "./settings.js";
 import { amenitiesRouter } from "./amenities.js";
 import { resourcesRouter } from "./resources.js";
 import { pricingRouter } from "./pricing.js";
+import { discountsRouter } from "./discounts.js";
 import { usersRouter } from "./users.js";
 import { auditRouter, notificationsRouter } from "./activity.js";
 import { bookingsRouter, calendarRouter, dashboardRouter, guestsRouter } from "./bookings.js";
@@ -33,6 +34,7 @@ export function adminRouter(
   router.use("/amenities", amenitiesRouter(db));
   router.use("/resources", requireRole("OWNER"), resourcesRouter(db));
   router.use("/pricing", requireRole("OWNER"), pricingRouter(db));
+  router.use("/discounts", requireRole("OWNER"), discountsRouter(db));
   router.use("/users", requireRole("OWNER"), usersRouter(db));
   router.use("/notifications", notificationsRouter(db));
   router.use("/audit", requireRole("OWNER"), auditRouter(db));

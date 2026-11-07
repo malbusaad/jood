@@ -31,6 +31,8 @@ export interface AppOptions {
   apiLimit?: number;
   /** Booking requests per IP per hour. */
   bookingLimit?: number;
+  /** Discount-code checks per IP per 15 minutes. */
+  codeCheckLimit?: number;
   /** Sends owner notifications to WhatsApp; null when not configured. */
   whatsapp?: WhatsAppSender | null;
   /** Public site address, used to build guest portal links. */
@@ -49,6 +51,7 @@ export function createApp({
   loginLimit = 10,
   apiLimit = 300,
   bookingLimit = 10,
+  codeCheckLimit = 30,
   whatsapp = null,
   publicBaseUrl = "http://localhost:5173",
   lock = null,
@@ -93,7 +96,7 @@ export function createApp({
   );
 
   app.use("/api/health", healthRouter(db));
-  app.use("/api/public", publicRouter(db, { whatsapp, bookingLimit, secretBox }));
+  app.use("/api/public", publicRouter(db, { whatsapp, bookingLimit, secretBox, codeCheckLimit }));
   app.use("/api/guest", guestRouter(db, { secretBox }));
 
   app.use("/api/auth", requireSameOrigin(allowedOrigins), loadSession(db, secureCookies));

@@ -11,6 +11,8 @@ import { blockedResources } from "../services/conflicts.js";
 import { createBooking, evaluateSelection, expireStaleBookings } from "../services/bookings.js";
 import type { WhatsAppSender } from "../services/notifications.js";
 import { logoVersion, readLogo } from "../services/licenseLogo.js";
+import { computeDiscount, discountCodeSchema, findCode } from "../services/discounts.js";
+import { Prisma } from "@prisma/client";
 
 const rangeSchema = z
   .object({ from: isoDate, to: isoDate })
@@ -33,10 +35,14 @@ const bookingSchema = selectionSchema.extend({
   acceptTerms: z.literal(true, { error: "يجب الموافقة على الشروط والتعليمات" }),
   /** Honeypot: real visitors never see or fill this field. */
   website: z.string().max(0).optional(),
+  discountCode: z.union([z.literal(""), discountCodeSchema]).nullable().optional(),
 });
 
 /** Public catalog API. Returns only public settings — never bank details, codes or guest data. */
-export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender | null; bookingLimit: number; secretBox: SecretBox }) {
+export function publicRouter(
+  db: PrismaClient,
+  opts: { whatsapp: WhatsAppSender | null; bookingLimit: number; secretBox: SecretBox; codeCheckLimit?: number },
+) {
   const router = Router();
 
   router.get("/site", async (_req, res) => {
@@ -153,12 +159,42 @@ export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender 
   });
 
   /** Exact price breakdown for a selection, re-checked on the server. */
-  router.post("/quote", async (req, res) => {
-    const sel = parse(selectionSchema, req.body);
+  // Checking discount codes is limited per IP so codes cannot be guessed by trying many.
+  const codeLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: opts.codeCheckLimit ?? 30,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    skip: (req) => !req.body?.discountCode,
+    message: { error: "محاولات كثيرة لكود الخصم، حاول لاحقًا" },
+  });
+
+  router.post("/quote", codeLimiter, async (req, res) => {
+    const { discountCode: rawCode, ...rest } = (req.body ?? {}) as Record<string, unknown>;
+    const sel = parse(selectionSchema, rest);
     try {
       const ev = await evaluateSelection(db, sel, { channel: "WEBSITE" });
-      const total = Number(ev.quote.total);
-      res.json({ available: true, lines: ev.quote.lines, total, deposit: ev.deposit, payable: total + ev.deposit, endDate: ev.endDate });
+      const subtotal = Number(ev.quote.total);
+      // Discount: worked out here from the stored code; a bad code never blocks the quote itself.
+      let discount = null;
+      let discountError: string | null = null;
+      if (typeof rawCode === "string" && rawCode.trim()) {
+        const parsed = discountCodeSchema.safeParse(rawCode);
+        try {
+          if (!parsed.success) throw new HttpError(400, "كود الخصم غير صحيح أو غير مفعّل");
+          const d = computeDiscount(await findCode(db, parsed.data), {
+            lines: ev.quote.lines,
+            subtotal: new Prisma.Decimal(ev.quote.total),
+            resourceKinds: ev.resources.map((r) => r.kind),
+          });
+          discount = { code: d.code, amount: Number(d.amount) };
+        } catch (err) {
+          if (!(err instanceof HttpError)) throw err;
+          discountError = err.message;
+        }
+      }
+      const total = discount ? subtotal - discount.amount : subtotal;
+      res.json({ available: true, lines: ev.quote.lines, subtotal, discount, discountError, total, deposit: ev.deposit, payable: total + ev.deposit, endDate: ev.endDate });
     } catch (err) {
       if (err instanceof HttpError && err.status < 500) return void res.json({ available: false, reason: err.message });
       throw err;
@@ -176,7 +212,7 @@ export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender 
   /** Sends a booking request. It is NOT a confirmed booking: the owner contacts the guest on WhatsApp first. */
   router.post("/bookings", bookingLimiter, async (req, res) => {
     const input = parse(bookingSchema, req.body);
-    const { booking, evaluation } = await createBooking(
+    const { booking, evaluation, discount } = await createBooking(
       db,
       {
         resourceIds: input.resourceIds,
@@ -186,6 +222,7 @@ export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender 
         guestCount: input.guestCount ?? null,
         guestNotes: input.notes ?? null,
         channel: "WEBSITE",
+        discountCode: input.discountCode || null,
       },
       { whatsapp: opts.whatsapp, secretBox: opts.secretBox },
     );
@@ -200,6 +237,8 @@ export function publicRouter(db: PrismaClient, opts: { whatsapp: WhatsAppSender 
       endDate: evaluation.endDate,
       items: evaluation.resources.map((r) => r.name),
       lines: evaluation.quote.lines,
+      subtotal: Number(evaluation.quote.total),
+      discount: discount ? { code: discount.code, amount: Number(discount.amount) } : null,
       total,
       deposit,
       payable: total + deposit,
