@@ -325,3 +325,95 @@ describe("settings", () => {
     expect(screen.queryByRole("tab", { name: "العقد" })).toBeNull();
   });
 });
+
+describe("discount codes", () => {
+  const code = {
+    id: "c1", code: "JOOD10", label: "عرض", type: "PERCENT", value: 10, startDate: null, endDate: null, maxUses: 5, usedCount: 2,
+    onePerGuest: false, daysOfWeek: [], includeSpecialDays: true, scope: "ALL", minAmount: null, active: true, totalRedemptions: 3,
+  };
+
+  it("creates a code with all its rules", async () => {
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/discounts": () => [200, []],
+        "POST /api/admin/discounts": (body) => [201, { ...(body as object), id: "new" }],
+      },
+      OWNER,
+    );
+    renderAt("/admin/discounts");
+    expect(await screen.findByText("لا توجد أكواد خصم بعد.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /كود خصم/ }));
+    fireEvent.change(screen.getByLabelText(/^الكود/), { target: { value: "eid50" } });
+    fireEvent.change(screen.getByLabelText("نوع الخصم"), { target: { value: "FIXED" } });
+    fireEvent.change(screen.getByLabelText("المبلغ (ريال)"), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText(/الحد الأقصى للاستخدامات/), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("ينطبق على"), { target: { value: "FULL_ONLY" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "الخميس" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "يشمل أيام الإجازات والمناسبات" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "مرة واحدة لكل ضيف" }));
+    fireEvent.click(screen.getByRole("button", { name: "حفظ" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")!.body).toEqual({
+      code: "EID50", label: null, type: "FIXED", value: 50, startDate: null, endDate: null, maxUses: 1, onePerGuest: true,
+      daysOfWeek: [4], includeSpecialDays: false, scope: "FULL_ONLY", minAmount: null, active: true,
+    });
+  });
+
+  it("lists usage, switches a code off, and shows its log; used codes cannot be deleted", async () => {
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/discounts": () => [200, [code]],
+        "PATCH /api/admin/discounts/c1/active": () => [200, { ...code, active: false }],
+        "GET /api/admin/discounts/c1": () => [200, { ...code, redemptions: [{ id: "r1", amount: 95, status: "RELEASED", createdAt: "", releasedAt: "", guestName: "سارة محمد", booking: { id: "b1", reference: "JD-000007", status: "CANCELLED", startDate: "2026-11-15" } }] }],
+      },
+      OWNER,
+    );
+    renderAt("/admin/discounts");
+    expect(await screen.findByText("الاستخدامات: 2 من 5")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "حذف JOOD10" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "إيقاف JOOD10" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH" && (c.body as { active: boolean }).active === false)).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "سجل استخدام JOOD10" }));
+    expect(await screen.findByText("JD-000007")).toBeInTheDocument();
+    expect(screen.getByText("أُعيد للكود (أُلغي الحجز)")).toBeInTheDocument();
+  });
+});
+
+describe("special prices and seasons", () => {
+  const resources = { resources: [{ id: "full", name: "الاستراحة كاملة", kind: "FULL" }, { id: "p1", name: "المجلس", kind: "PART" }] };
+  const rules = [
+    { id: "w1", resourceId: "full", kind: "WEEKDAY", label: null, daysOfWeek: [0, 1, 2, 3], startDate: null, endDate: null, price: "950.00", priority: 0, active: true },
+    { id: "s1", resourceId: "full", kind: "SPECIAL", label: "اليوم الوطني", daysOfWeek: [], startDate: "2026-09-23T00:00:00.000Z", endDate: "2026-09-23T00:00:00.000Z", price: "1500.00", priority: 0, active: true },
+  ];
+
+  it("keeps base prices and special prices in separate sections", async () => {
+    mockAdminApi({ "GET /api/admin/pricing": () => [200, rules], "GET /api/admin/resources": () => [200, resources] }, OWNER);
+    renderAt("/admin/special-prices");
+    expect(await screen.findByRole("heading", { name: "الأسعار الخاصة والمواسم" })).toBeInTheDocument();
+    expect(await screen.findByText("اليوم الوطني")).toBeInTheDocument();
+    expect(screen.queryByText("950 ريال")).toBeNull();
+  });
+
+  it("sets one price for a group of separate days", async () => {
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/pricing": () => [200, rules],
+        "GET /api/admin/resources": () => [200, resources],
+        "POST /api/admin/pricing/special-dates": () => [201, []],
+      },
+      OWNER,
+    );
+    renderAt("/admin/special-prices");
+    await screen.findByText("اليوم الوطني");
+    fireEvent.click(screen.getByRole("button", { name: /سعر لمجموعة أيام/ }));
+    fireEvent.change(screen.getByLabelText("اسم المناسبة أو العرض"), { target: { value: "عيد الفطر" } });
+    fireEvent.change(screen.getByLabelText("السعر لليوم (ريال)"), { target: { value: "1800" } });
+    for (const d of ["2027-03-10", "2027-03-09"]) {
+      fireEvent.change(screen.getByLabelText("أضف يومًا"), { target: { value: d } });
+      fireEvent.click(screen.getByRole("button", { name: /إضافة اليوم/ }));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "حفظ" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")!.body).toEqual({ resourceIds: ["full"], label: "عيد الفطر", dates: ["2027-03-09", "2027-03-10"], price: 1800, priority: 0 });
+  });
+});

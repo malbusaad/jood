@@ -196,7 +196,8 @@ model Guest {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  bookings Booking[]
+  bookings    Booking[]
+  redemptions DiscountRedemption[]
 
   @@index([name])
   @@map("guests")
@@ -246,6 +247,10 @@ model Booking {
   contractAcceptedAt DateTime?      @map("contract_accepted_at")
   /// عدد مرات تعديل الموعد (مسموح مرة واحدة)
   rescheduleCount    Int            @default(0) @map("reschedule_count")
+  /// مبلغ الخصم من كود الخصم (مبلغ الحجز totalAmount بعد الخصم)
+  discountAmount     Decimal        @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  /// نسخة من كود الخصم المستخدم وقت الحجز
+  discountCode       String?        @map("discount_code") @db.VarChar(30)
   confirmedAt        DateTime?      @map("confirmed_at")
   confirmedById      String?        @map("confirmed_by_id") @db.Uuid
   cancelledAt        DateTime?      @map("cancelled_at")
@@ -253,14 +258,15 @@ model Booking {
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
 
-  guest         Guest              @relation(fields: [guestId], references: [id], onDelete: Restrict)
-  confirmedBy   User?              @relation("BookingConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  guest         Guest               @relation(fields: [guestId], references: [id], onDelete: Restrict)
+  confirmedBy   User?               @relation("BookingConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
   items         BookingItem[]
   locks         BookingLock[]
   payments      Payment[]
   accessTokens  GuestAccessToken[]
   notifications Notification[]
   doorCodes     DoorCode[]
+  redemption    DiscountRedemption?
 
   @@index([status])
   @@index([startDate])
@@ -480,4 +486,74 @@ model DoorCode {
 
   @@index([bookingId, status])
   @@map("door_codes")
+}
+
+// ─────────────────────────── أكواد الخصم ───────────────────────────
+
+enum DiscountType {
+  PERCENT // نسبة مئوية
+  FIXED // مبلغ ثابت بالريال
+}
+
+enum DiscountScope {
+  ALL // الحجز الكامل والجزئي
+  FULL_ONLY // الحجز الكامل فقط
+}
+
+enum RedemptionStatus {
+  ACTIVE // محتسب على الكود
+  RELEASED // أُعيد للكود بعد إلغاء/رفض/انتهاء الحجز
+}
+
+model DiscountCode {
+  id                 String        @id @default(uuid()) @db.Uuid
+  /// الكود بأحرف إنجليزية كبيرة وأرقام، مثل JOOD10
+  code               String        @unique @db.VarChar(30)
+  label              String?       @db.VarChar(120)
+  type               DiscountType
+  value              Decimal       @db.Decimal(10, 2)
+  /// صلاحية استخدام الكود (بتاريخ الرياض، شاملة)
+  startDate          DateTime?     @map("start_date") @db.Date
+  endDate            DateTime?     @map("end_date") @db.Date
+  /// الحد الأقصى للاستخدامات (فارغ = بلا حد)
+  maxUses            Int?          @map("max_uses")
+  /// الاستخدامات المحتسبة حاليًا (تنقص عند إلغاء الحجز)
+  usedCount          Int           @default(0) @map("used_count")
+  /// مرة واحدة لكل ضيف
+  onePerGuest        Boolean       @default(false) @map("one_per_guest")
+  /// أيام الأسبوع التي يشملها الخصم: 0 = الأحد ... 6 = السبت. فارغة = كل الأيام
+  daysOfWeek         Int[]         @map("days_of_week")
+  /// هل يشمل أيام الأسعار الخاصة والمواسم (الإجازات والمناسبات)
+  includeSpecialDays Boolean       @default(true) @map("include_special_days")
+  scope              DiscountScope @default(ALL)
+  /// الحد الأدنى لمبلغ الحجز قبل الخصم
+  minAmount          Decimal?      @map("min_amount") @db.Decimal(10, 2)
+  active             Boolean       @default(true)
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  redemptions DiscountRedemption[]
+
+  @@map("discount_codes")
+}
+
+/// سجل كل استخدام لكود خصم
+model DiscountRedemption {
+  id          String           @id @default(uuid()) @db.Uuid
+  codeId      String           @map("code_id") @db.Uuid
+  bookingId   String           @unique @map("booking_id") @db.Uuid
+  guestId     String           @map("guest_id") @db.Uuid
+  amount      Decimal          @db.Decimal(10, 2)
+  /// نسخة من إعداد «مرة واحدة لكل ضيف» وقت الاستخدام (للقيد في قاعدة البيانات)
+  onePerGuest Boolean          @map("one_per_guest")
+  status      RedemptionStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  releasedAt  DateTime?        @map("released_at")
+
+  code    DiscountCode @relation(fields: [codeId], references: [id], onDelete: Restrict)
+  booking Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  guest   Guest        @relation(fields: [guestId], references: [id], onDelete: Restrict)
+
+  @@index([codeId])
+  @@map("discount_redemptions")
 }

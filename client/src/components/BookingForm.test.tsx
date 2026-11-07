@@ -97,4 +97,37 @@ describe("booking form", () => {
     await screen.findByText("الإجمالي المستحق");
     await waitFor(() => expect(within(screen.getByRole("main")).queryByText(/SA\d{22}/)).toBeNull());
   });
+
+  it("applies a discount code checked by the server, and sends only the accepted code", async () => {
+    const { fetchMock } = renderApp("/booking", { options: [FULL], booking: { status: 201, body: { ...receipt, subtotal: 1200, discount: { code: "JOOD10", amount: 120 }, total: 1080, payable: 1580 } } });
+    await pickThursday();
+    expect(await screen.findByText("1,700 ريال")).toBeInTheDocument();
+
+    const field = screen.getByLabelText("كود الخصم (اختياري)");
+    fireEvent.change(field, { target: { value: "WRONG" } });
+    fireEvent.click(screen.getByRole("button", { name: "تطبيق" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("كود الخصم غير صحيح أو غير مفعّل");
+    expect(screen.getByText("1,700 ريال")).toBeInTheDocument();
+
+    fireEvent.change(field, { target: { value: "jood10" } });
+    fireEvent.click(screen.getByRole("button", { name: "تطبيق" }));
+    expect(await screen.findByText("تم تطبيق الخصم. التأمين لا يدخل في الخصم.")).toBeInTheDocument();
+    expect(screen.getByText("مبلغ الحجز قبل الخصم")).toBeInTheDocument();
+    expect(screen.getByText("− 120 ريال")).toBeInTheDocument();
+    expect(screen.getByText("1,080 ريال")).toBeInTheDocument();
+    expect(screen.getByText("1,580 ريال")).toBeInTheDocument(); // 1,080 + 500 deposit (not discounted)
+
+    fireEvent.change(screen.getByLabelText("الاسم الثلاثي"), { target: { value: "سارة محمد القحطاني" } });
+    fireEvent.change(screen.getByLabelText(/رقم الهوية أو الإقامة/), { target: { value: "1023456789" } });
+    fireEvent.change(screen.getByLabelText("رقم الجوال (واتساب)"), { target: { value: "0501234567" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /أوافق عليها/ }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال طلب الحجز" }));
+    expect(await screen.findByRole("heading", { name: "تم استلام طلب الحجز" })).toBeInTheDocument();
+    const sent = fetchMock.mock.calls.find(([u]) => String(u).includes("/api/public/bookings"))!;
+    const body = JSON.parse(String(sent[1]!.body));
+    expect(body.discountCode).toBe("JOOD10");
+    expect(body).not.toHaveProperty("discountAmount");
+    expect(body).not.toHaveProperty("total");
+    expect(screen.getByText("− 120 ريال")).toBeInTheDocument(); // on the receipt too
+  });
 });

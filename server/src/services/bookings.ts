@@ -9,6 +9,7 @@ import { quote, type Quote } from "./pricing.js";
 import { blockedResources, lockKeysByResource, resourcesCompatible } from "./conflicts.js";
 import { notifyOwner, type WhatsAppSender } from "./notifications.js";
 import type { SecretBox } from "../lib/secretBox.js";
+import { computeDiscount, findCode, redeem, type AppliedDiscount } from "./discounts.js";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -115,6 +116,8 @@ export interface NewBooking extends Selection {
   guestNotes?: string | null;
   adminNotes?: string | null;
   channel: BookingChannel;
+  /** كود الخصم كما أدخله الضيف (مُطبّع) — يُتحقق منه ويُحسب في الخادم */
+  discountCode?: string | null;
 }
 
 async function nextReference(tx: Prisma.TransactionClient): Promise<string> {
@@ -148,6 +151,14 @@ export async function createBooking(
         update: { name: input.guest.name, ...(input.guest.email ? { email: input.guest.email } : {}), ...id },
       });
 
+      const discount: AppliedDiscount | null = input.discountCode
+        ? computeDiscount(await findCode(tx, input.discountCode), {
+            lines: ev.quote.lines,
+            subtotal: new Prisma.Decimal(ev.quote.total),
+            resourceKinds: ev.resources.map((r) => r.kind),
+          })
+        : null;
+
       const booking = await tx.booking.create({
         data: {
           reference: await nextReference(tx),
@@ -155,7 +166,9 @@ export async function createBooking(
           channel: input.channel,
           startDate: fromIsoDate(input.startDate),
           endDate: fromIsoDate(ev.endDate),
-          totalAmount: ev.quote.total,
+          totalAmount: discount ? discount.total : ev.quote.total,
+          discountAmount: discount ? discount.amount : 0,
+          discountCode: discount?.code ?? null,
           depositAmount: ev.deposit,
           priceBreakdown: ev.quote.lines as unknown as Prisma.InputJsonValue,
           guestCount: input.guestCount ?? null,
@@ -163,6 +176,8 @@ export async function createBooking(
           adminNotes: input.adminNotes ?? null,
         },
       });
+
+      if (discount) await redeem(tx, discount, booking.id, guest.id);
 
       await tx.bookingItem.createMany({
         data: ev.quote.lines.map((l) => ({ bookingId: booking.id, resourceId: l.resourceId, date: fromIsoDate(l.date), price: l.price })),
@@ -181,16 +196,19 @@ export async function createBooking(
           details: { reference: booking.reference, channel: input.channel },
         });
       }
-      return { booking, guest, ev };
+      return { booking, guest, ev, discount };
     });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      if (JSON.stringify(err.meta ?? {}).includes("discount") || err.message.includes("discount_redemptions")) {
+        throw new HttpError(400, "استخدمت كود الخصم هذا من قبل");
+      }
       throw new HttpError(409, "عذرًا، حُجز هذا الموعد للتو. اختر تاريخًا آخر.");
     }
     throw err;
   }
 
-  const { booking, guest, ev } = created;
+  const { booking, guest, ev, discount } = created;
   const what = ev.resources.map((r) => r.name).join("، ");
   const when = ev.dates.length === 1 ? formatDateAr(ev.dates[0]!) : `${formatDateAr(ev.dates[0]!)} (${ev.dates.length} أيام)`;
   if (input.channel === "WEBSITE") {
@@ -199,14 +217,14 @@ export async function createBooking(
       {
         type: "NEW_BOOKING",
         title: `طلب حجز جديد ${booking.reference}`,
-        body: `${guest.name} — ${guest.phone}\n${what}\n${when}\nالمبلغ: ${ev.quote.total} ريال`,
+        body: `${guest.name} — ${guest.phone}\n${what}\n${when}\nالمبلغ: ${booking.totalAmount.toFixed(2)} ريال${discount ? ` (بعد خصم ${discount.amount} بكود ${discount.code})` : ""}`,
         bookingId: booking.id,
         whatsappParams: [booking.reference, guest.name, guest.phone, when, what],
       },
       ctx.whatsapp,
     );
   }
-  return { booking, guest, evaluation: ev };
+  return { booking, guest, evaluation: ev, discount };
 }
 
 /** Moves unpaid requests past their payment deadline to EXPIRED (a trigger releases their days). */

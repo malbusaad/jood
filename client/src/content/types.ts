@@ -85,10 +85,29 @@ export interface QuoteLine {
   resourceId: string;
   resourceName: string;
   price: string;
+  ruleKind?: "WEEKDAY" | "SEASON" | "SPECIAL";
+  ruleLabel?: string | null;
+}
+
+export interface AppliedDiscount {
+  code: string;
+  amount: number;
 }
 
 export type Quote =
-  | { available: true; lines: QuoteLine[]; total: number; deposit: number; payable: number; endDate: string }
+  | {
+      available: true;
+      lines: QuoteLine[];
+      /** مبلغ الحجز قبل الخصم */
+      subtotal?: number;
+      discount?: AppliedDiscount | null;
+      discountError?: string | null;
+      /** مبلغ الحجز بعد الخصم */
+      total: number;
+      deposit: number;
+      payable: number;
+      endDate: string;
+    }
   | { available: false; reason: string };
 
 export interface BookingReceipt {
@@ -98,6 +117,8 @@ export interface BookingReceipt {
   endDate: string;
   items: string[];
   lines: QuoteLine[];
+  subtotal?: number;
+  discount?: AppliedDiscount | null;
   total: number;
   deposit: number;
   payable: number;

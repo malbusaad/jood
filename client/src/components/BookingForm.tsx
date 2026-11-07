@@ -65,6 +65,9 @@ export default function BookingForm() {
   const [mode, setMode] = useState<"FULL" | "PART">("FULL");
   const [parts, setParts] = useState<string[]>([]);
   const [quote, setQuote] = useState<Quote | null>(null);
+  /** Discount code: what the guest typed, and the code sent for checking (the server decides). */
+  const [codeInput, setCodeInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", nationalId: "", phone: "", email: "", guestCount: "", notes: "", acceptTerms: false, website: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +118,7 @@ export default function BookingForm() {
     let cancelled = false;
     api<Quote>("/api/public/quote", {
       method: "POST",
-      body: JSON.stringify({ resourceIds: selection, startDate: toIso(date), nights }),
+      body: JSON.stringify({ resourceIds: selection, startDate: toIso(date), nights, ...(appliedCode ? { discountCode: appliedCode } : {}) }),
     })
       .then((q) => !cancelled && setQuote(q))
       .catch(() => !cancelled && setQuote({ available: false, reason: "تعذر حساب السعر، حاول مرة أخرى" }));
@@ -123,7 +126,7 @@ export default function BookingForm() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, nights, selection.join(",")]);
+  }, [date, nights, selection.join(","), appliedCode]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -139,6 +142,8 @@ export default function BookingForm() {
           nights,
           name: form.name,
           nationalId: form.nationalId,
+          // Only a code the server accepted for this quote is sent; the amount is never sent.
+          discountCode: quote.discount ? quote.discount.code : null,
           phone: form.phone,
           email: form.email || null,
           guestCount: form.guestCount ? Number(form.guestCount) : null,
@@ -273,15 +278,26 @@ export default function BookingForm() {
                 <tbody>
                   {quote.lines.map((l) => (
                     <tr key={`${l.date}-${l.resourceId}`} className="border-b border-jood-green/10">
-                      <td className="py-2">{formatDateAr(l.date)}</td>
+                      <td className="py-2">
+                        {formatDateAr(l.date)}
+                        {l.ruleKind && l.ruleKind !== "WEEKDAY" && l.ruleLabel && (
+                          <span className="mt-1 block w-fit rounded-full bg-jood-gold/15 px-2 py-0.5 text-xs text-jood-green">{l.ruleLabel}</span>
+                        )}
+                      </td>
                       <td className="py-2 text-jood-ink/70">{l.resourceName}</td>
-                      <td className="py-2 text-end">{formatSAR(Number(l.price))}</td>
+                      <td className="whitespace-nowrap py-2 text-end">{formatSAR(Number(l.price))}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <dl className="mt-4 space-y-1 text-sm">
-                <div className="flex justify-between"><dt>مبلغ الحجز</dt><dd>{formatSAR(quote.total)}</dd></div>
+                {quote.discount && (
+                  <>
+                    <div className="flex justify-between text-jood-ink/70"><dt>مبلغ الحجز قبل الخصم</dt><dd>{formatSAR(quote.subtotal ?? quote.total + quote.discount.amount)}</dd></div>
+                    <div className="flex justify-between text-emerald-700"><dt>الخصم (<span dir="ltr">{quote.discount.code}</span>)</dt><dd>− {formatSAR(quote.discount.amount)}</dd></div>
+                  </>
+                )}
+                <div className="flex justify-between"><dt>{quote.discount ? "مبلغ الحجز بعد الخصم" : "مبلغ الحجز"}</dt><dd>{formatSAR(quote.total)}</dd></div>
                 {quote.deposit > 0 && (
                   <div className="flex justify-between text-jood-ink/70"><dt>مبلغ التأمين (يُسترد بعد المغادرة)</dt><dd>{formatSAR(quote.deposit)}</dd></div>
                 )}
@@ -289,6 +305,37 @@ export default function BookingForm() {
                   <dt>الإجمالي المستحق</dt><dd>{formatSAR(quote.payable)}</dd>
                 </div>
               </dl>
+              <div className="mt-5 border-t border-jood-green/10 pt-4">
+                <label htmlFor="discount-code" className="text-sm">كود الخصم (اختياري)</label>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    id="discount-code"
+                    dir="ltr"
+                    autoComplete="off"
+                    maxLength={30}
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (codeInput.trim()) setAppliedCode(codeInput.trim());
+                      }
+                    }}
+                    className={`min-w-0 flex-1 text-end uppercase ${input}`}
+                  />
+                  {appliedCode && quote.discount ? (
+                    <button type="button" onClick={() => { setAppliedCode(null); setCodeInput(""); }} className="rounded-xl border border-jood-green/20 px-4 text-sm">
+                      إزالة
+                    </button>
+                  ) : (
+                    <button type="button" disabled={!codeInput.trim()} onClick={() => setAppliedCode(codeInput.trim())} className="rounded-xl bg-jood-green px-4 text-sm text-jood-beige disabled:opacity-50">
+                      تطبيق
+                    </button>
+                  )}
+                </div>
+                {appliedCode && quote.discountError && <p role="alert" className="mt-2 text-sm text-red-700">{quote.discountError}</p>}
+                {quote.discount && <p className="mt-2 text-sm text-emerald-700">تم تطبيق الخصم. التأمين لا يدخل في الخصم.</p>}
+              </div>
             </div>
           ) : (
             <p className="text-sm text-jood-ink/80">{quote.reason}</p>
@@ -374,6 +421,9 @@ function Receipt({ receipt, phone }: { receipt: BookingReceipt; phone: string })
         <div className="flex justify-between gap-4"><dt>المحجوز</dt><dd className="text-end">{receipt.items.join("، ")}</dd></div>
         <div className="flex justify-between gap-4"><dt>الدخول</dt><dd>{formatDateAr(receipt.startDate)}</dd></div>
         <div className="flex justify-between gap-4"><dt>الخروج</dt><dd>{formatDateAr(receipt.endDate)}</dd></div>
+        {receipt.discount && (
+          <div className="flex justify-between gap-4 text-emerald-700"><dt>الخصم (<span dir="ltr">{receipt.discount.code}</span>)</dt><dd>− {formatSAR(receipt.discount.amount)}</dd></div>
+        )}
         <div className="flex justify-between gap-4"><dt>مبلغ الحجز</dt><dd>{formatSAR(receipt.total)}</dd></div>
         {receipt.deposit > 0 && <div className="flex justify-between gap-4"><dt>مبلغ التأمين (مسترد)</dt><dd>{formatSAR(receipt.deposit)}</dd></div>}
         <div className="flex justify-between gap-4 border-t border-jood-green/10 pt-2 font-semibold text-jood-green"><dt>الإجمالي المستحق</dt><dd>{formatSAR(receipt.payable)}</dd></div>

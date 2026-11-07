@@ -118,6 +118,12 @@ export default function BookingDetailPage() {
               </tbody>
             </table>
             <dl className="mt-3 space-y-1 border-t border-jood-green/10 pt-3 text-sm">
+              {Number(b.discountAmount ?? 0) > 0 && (
+                <>
+                  <div className="flex justify-between text-jood-ink/65"><dt>قبل الخصم</dt><dd>{money(total + Number(b.discountAmount))}</dd></div>
+                  <div className="flex justify-between text-emerald-700"><dt>الخصم {b.discountCode && <span dir="ltr">({b.discountCode})</span>}</dt><dd>− {money(Number(b.discountAmount))}</dd></div>
+                </>
+              )}
               <div className="flex justify-between"><dt>مبلغ الحجز</dt><dd>{money(total)}</dd></div>
               <div className="flex justify-between text-jood-ink/65"><dt>التأمين (مسترد)</dt><dd>{money(deposit)}</dd></div>
               <div className="flex justify-between font-semibold text-jood-green"><dt>الإجمالي المستحق</dt><dd>{money(total + deposit)}</dd></div>
