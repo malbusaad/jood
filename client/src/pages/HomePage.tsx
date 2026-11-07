@@ -5,10 +5,10 @@ import Reveal from "../components/Reveal";
 import SectionHeading from "../components/SectionHeading";
 import AmenityGrid from "../components/AmenityGrid";
 import PricingCards from "../components/PricingCards";
-import PriceCalendar from "../components/LazyPriceCalendar";
 import GalleryGrid from "../components/GalleryGrid";
 import VideoBlock from "../components/VideoBlock";
 import ContactDetails from "../components/ContactDetails";
+import TourismLicense from "../components/TourismLicense";
 import { useSiteContent } from "../hooks/useSiteContent";
 import { usePageTitle } from "../hooks/usePageTitle";
 import { formatTimeAr } from "../lib/format";
@@ -37,6 +37,7 @@ export default function HomePage() {
 
   return (
     <>
+      <TourismLicense license={site.tourismLicense} />
       {/* الواجهة الرئيسية */}
       <section className="relative isolate overflow-hidden bg-jood-green-950 text-jood-beige">
         {site.media.heroImageUrl ? (
@@ -113,7 +114,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* الأسعار والتقويم */}
+      {/* الأسعار */}
       <section className="bg-white/50 py-24">
         <div className="mx-auto grid max-w-6xl gap-12 px-4 lg:grid-cols-2">
           <div>
@@ -127,12 +128,20 @@ export default function HomePage() {
               <MoreLink to="/pricing">تفاصيل الأسعار</MoreLink>
             </div>
           </div>
-          <div>
-            <SectionHeading eyebrow="التقويم" title="الأسعار والإتاحة">
-              سعر كل يوم والأيام المحجوزة للاستراحة كاملة.
-            </SectionHeading>
-            <div className="mt-10">
-              <PriceCalendar />
+          {/* التقويم يظهر في صفحة الحجز فقط */}
+          <div className="flex flex-col justify-center rounded-3xl bg-jood-green-950 p-8 text-jood-beige sm:p-10">
+            <p className="text-sm tracking-[0.2em] text-jood-gold">الإتاحة والحجز</p>
+            <h2 className="mt-3 text-3xl font-semibold">اختر اليوم المناسب لك</h2>
+            <p className="mt-4 leading-8 text-jood-beige/80">
+              اطّلع على الأيام المتاحة وسعر كل يوم، واختر الاستراحة كاملة أو جزءًا منها، من صفحة الحجز.
+            </p>
+            <div className="mt-8">
+              <Link
+                to="/booking"
+                className="inline-block rounded-full bg-jood-gold px-8 py-3.5 font-medium text-jood-green-950 transition hover:bg-jood-gold-light"
+              >
+                احجز الآن
+              </Link>
             </div>
           </div>
         </div>

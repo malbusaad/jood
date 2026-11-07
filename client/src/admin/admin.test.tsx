@@ -258,7 +258,48 @@ describe("settings", () => {
     guestPortal: { entryCode: null, wifiName: null, wifiPassword: null, departureInstructions: [], linkGraceHours: 12, showCodesFrom: "CHECKIN_DAY" },
     notifications: { ownerWhatsapp: null, whatsappEnabled: false },
     contract: { template: "# عقد" },
+    ticker: {
+      enabled: true,
+      items: [
+        { id: "a", text: "أهلًا وسهلًا", active: true },
+        { id: "b", text: "احجزوا الآن", active: true },
+      ],
+      secondsPerItem: 8,
+      direction: "rtl",
+      mobile: "animate",
+    },
+    tourismLicense: { enabled: false, licenseNumber: null, text: "مرخصة من وزارة السياحة" },
   };
+
+  it("edits the news ticker: add, reorder, disable, delete, speed and mobile mode", async () => {
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/settings": () => [200, settings],
+        "GET /api/admin/license-logo": () => [200, { url: null }],
+        "PUT /api/admin/settings/ticker": (body) => [200, { key: "ticker", value: body }],
+      },
+      OWNER,
+    );
+    renderAt("/admin/settings");
+    fireEvent.click(await screen.findByRole("tab", { name: "الشريط والترخيص" }));
+    const card = (await screen.findByRole("heading", { name: "الشريط الإخباري المتحرك" })).closest("section")!;
+    fireEvent.click(within(card).getByRole("button", { name: "إضافة عبارة" }));
+    fireEvent.change(within(card).getByLabelText("العبارة 3"), { target: { value: "عرض خاص" } });
+    fireEvent.click(within(card).getByRole("button", { name: "نقل العبارة 3 للأعلى" }));
+    fireEvent.click(within(card).getAllByRole("checkbox", { name: "مفعّلة" })[0]!);
+    fireEvent.click(within(card).getByRole("button", { name: "حذف العبارة 3" }));
+    fireEvent.change(within(card).getByLabelText(/السرعة/), { target: { value: "5" } });
+    fireEvent.change(within(card).getByLabelText("على الجوال"), { target: { value: "static" } });
+    fireEvent.click(within(card).getByRole("button", { name: "حفظ" }));
+    expect(await within(card).findByText("تم الحفظ")).toBeInTheDocument();
+    const body = calls.find((c) => c.method === "PUT")!.body as { items: { text: string; active: boolean }[]; secondsPerItem: number; mobile: string };
+    expect(body.items.map((i) => [i.text, i.active])).toEqual([["أهلًا وسهلًا", false], ["عرض خاص", true]]);
+    expect(body.secondsPerItem).toBe(5);
+    expect(body.mobile).toBe("static");
+    // The licence section is there, with the logo upload.
+    expect(screen.getByRole("heading", { name: "ترخيص وزارة السياحة" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /رفع الشعار/ })).toBeInTheDocument();
+  });
 
   it("saves the Gathern link", async () => {
     const calls = mockAdminApi(

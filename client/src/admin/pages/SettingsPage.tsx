@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useUser } from "../auth";
+import { LicenseLogoCard, TickerEditor, type TickerValue } from "./SiteExtrasSettings";
 import { Button, Card, ErrorNote, Field, Loading, PageTitle, inputClass, useApi, useMutation } from "../ui";
 
 type Json = Record<string, unknown>;
@@ -112,6 +113,16 @@ const SECTIONS: SectionDef[] = [
       { path: "departureInstructions", label: "إرشادات المغادرة (كل سطر إرشاد)", type: "lines" },
       { path: "linkGraceHours", label: "ساعات بقاء الرابط بعد وقت الخروج", type: "number" },
       { path: "showCodesFrom", label: "متى يظهر رمز الدخول والواي فاي", type: "select", options: [["CHECKIN_DAY", "يوم الدخول فقط"], ["IMMEDIATELY", "فور فتح الرابط"]] },
+    ],
+  },
+  {
+    key: "tourismLicense",
+    title: "ترخيص وزارة السياحة",
+    intro: "يظهر أعلى الصفحة الرئيسية بعد إدخال رقم الترخيص الحقيقي وتفعيل الإظهار.",
+    fields: [
+      { path: "enabled", label: "إظهار قسم الترخيص", type: "bool" },
+      { path: "licenseNumber", label: "رقم الترخيص", type: "text", ltr: true },
+      { path: "text", label: "العبارة", type: "text" },
     ],
   },
   {
@@ -377,6 +388,7 @@ function LockStatusCard() {
 
 const TABS = [
   { id: "site", label: "الموقع", keys: ["general", "stay", "contact", "gathern"] },
+  { id: "banner", label: "الشريط والترخيص", keys: ["ticker", "tourismLicense", "licenseLogo"] },
   { id: "booking", label: "الحجز والدفع", keys: ["bookingPolicy", "bank", "cancellationPolicy"] },
   { id: "rules", label: "التعليمات والأسئلة", keys: ["houseRules", "faqs"] },
   { id: "guest", label: "بوابة الضيف", keys: ["guestPortal"] },
@@ -415,6 +427,8 @@ export default function SettingsPage() {
             if (key === "faqs") return <FaqEditor key={key} initial={(data.faqs as { q: string; a: string }[]) ?? []} canEdit={owner} />;
             if (key === "contract") return owner ? <ContractEditor key={key} initial={(data.contract as { template: string })?.template ?? ""} /> : null;
             if (key === "lockStatus") return owner ? <LockStatusCard key={key} /> : null;
+            if (key === "ticker") return <TickerEditor key={key} initial={data.ticker as TickerValue} canEdit={owner} />;
+            if (key === "licenseLogo") return <LicenseLogoCard key={key} canEdit={owner} />;
             const def = SECTIONS.find((s) => s.key === key)!;
             if (def.ownerOnly && !owner) return null;
             return <Section key={key} def={def} initial={data[key]} canEdit={owner} />;

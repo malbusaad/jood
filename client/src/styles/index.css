@@ -92,3 +92,29 @@
   color: var(--color-jood-beige);
   border-color: var(--color-jood-gold);
 }
+
+/* الشريط الإخباري المتحرك */
+@keyframes jood-ticker-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes jood-ticker-right {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+.jood-ticker-track {
+  animation: var(--ticker-name) var(--ticker-duration) linear infinite;
+}
+.jood-ticker:hover .jood-ticker-track,
+.jood-ticker:focus-within .jood-ticker-track {
+  animation-play-state: paused;
+}
+.jood-ticker-static { display: none; }
+@media (max-width: 639px) {
+  .jood-ticker[data-mobile="static"] .jood-ticker-marquee { display: none; }
+  .jood-ticker[data-mobile="static"] .jood-ticker-static { display: block; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jood-ticker .jood-ticker-marquee { display: none; }
+  .jood-ticker .jood-ticker-static { display: block; }
+}

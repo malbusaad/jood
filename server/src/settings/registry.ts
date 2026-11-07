@@ -157,6 +157,49 @@ export const settingDefinitions = {
       ].join("\n"),
     },
   },
+  /** شريط الأخبار المتحرك أعلى الموقع. ترتيب العبارات = ترتيب ظهورها. */
+  ticker: {
+    public: true,
+    schema: z.object({
+      enabled: z.boolean(),
+      items: z
+        .array(z.object({ id: z.string().trim().min(1).max(40), text: text(200), active: z.boolean() }))
+        .max(30)
+        .refine((items) => new Set(items.map((i) => i.id)).size === items.length, "معرّف العبارة مكرر"),
+      /** ثوانٍ لكل عبارة تقريبًا: كلما قلّ الرقم زادت السرعة */
+      secondsPerItem: z.number().int().min(3).max(30),
+      /** rtl: تتحرك العبارات من اليسار إلى اليمين (مناسب للعربية)، ltr: العكس */
+      direction: z.enum(["rtl", "ltr"]),
+      /** على الشاشات الصغيرة: animate = متحرك، static = عبارة ثابتة تتبدل */
+      mobile: z.enum(["animate", "static"]),
+    }),
+    // العبارات التي اقترحها المالك.
+    initial: {
+      enabled: true,
+      items: [
+        { id: "welcome", text: "أهلًا وسهلًا بكم في استراحة الجود.", active: true },
+        { id: "privacy", text: "استمتعوا بأوقاتكم في أجواء من الخصوصية والراحة.", active: true },
+        { id: "discover", text: "اكتشفوا مرافقنا وخيارات الحجز.", active: true },
+        { id: "offers", text: "عروض ومميزات خاصة لضيوف استراحة الجود.", active: true },
+        { id: "book", text: "احجزوا موعدكم الآن.", active: true },
+      ],
+      secondsPerItem: 8,
+      direction: "rtl",
+      mobile: "animate",
+    },
+  },
+  /** ترخيص وزارة السياحة: لا يظهر إلا بعد إدخال رقم الترخيص الحقيقي وتفعيله. الشعار يُرفع من لوحة الإدارة. */
+  tourismLicense: {
+    public: true,
+    schema: z
+      .object({
+        enabled: z.boolean(),
+        licenseNumber: z.string().trim().min(1).max(50).nullable(),
+        text: text(120),
+      })
+      .refine((v) => !v.enabled || v.licenseNumber !== null, { message: "أدخل رقم الترخيص قبل إظهار القسم", path: ["licenseNumber"] }),
+    initial: { enabled: false, licenseNumber: null, text: "مرخصة من وزارة السياحة" },
+  },
   // ─── خاصة ───
   bank: {
     public: false,
