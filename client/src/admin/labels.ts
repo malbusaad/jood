@@ -24,5 +24,16 @@ export const ACTION_LABEL: Record<BookingStatus, string> = {
 };
 
 export const CHANNEL: Record<Channel, string> = { WEBSITE: "الموقع", GATHERN: "جاذر إن", MANUAL: "يدوي" };
-export const METHOD: Record<PaymentMethod, string> = { BANK_TRANSFER: "تحويل بنكي", GATHERN: "جاذر إن" };
+export const METHOD: Record<PaymentMethod, string> = { BANK_TRANSFER: "تحويل بنكي", GATHERN: "جاذر إن", CASH: "نقدًا" };
+export const PURPOSE = { BOOKING: "مبلغ الحجز", SECURITY_DEPOSIT: "التأمين" } as const;
+export const PLAN = { FULL: "كامل المبلغ مقدمًا", DEPOSIT: "عربون والباقي قبل الدخول" } as const;
+export const DEPOSIT_TIMING = { WITH_FIRST_PAYMENT: "مع الدفعة الأولى", BEFORE_CHECKIN: "قبل الدخول" } as const;
+export const DEPOSIT_STATUS = {
+  NONE: "لا يوجد تأمين",
+  UNPAID: "غير مدفوع",
+  PARTIAL: "مدفوع جزئيًا",
+  PAID: "مدفوع",
+  REFUNDED: "مُسترد",
+  PARTIALLY_REFUNDED: "مُسترد جزئيًا",
+} as const;
 export const PAYMENT_STATUS = { PENDING: "بانتظار التحقق", ACCEPTED: "متحقق منه", REJECTED: "مرفوض" } as const;

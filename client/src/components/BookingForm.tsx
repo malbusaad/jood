@@ -5,7 +5,7 @@ import { ar } from "react-day-picker/locale";
 import "react-day-picker/style.css";
 import { CheckCircle2, Info, Loader2 } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { BookingOption, BookingReceipt, CalendarDay, Quote } from "../content/types";
+import type { DepositTiming, PaymentPlan, BookingOption, BookingReceipt, CalendarDay, Quote } from "../content/types";
 import { formatDateAr, formatSAR, toIso } from "../lib/format";
 import { useSiteContent } from "../hooks/useSiteContent";
 import CopyButton from "./CopyButton";
@@ -68,6 +68,9 @@ export default function BookingForm() {
   /** Discount code: what the guest typed, and the code sent for checking (the server decides). */
   const [codeInput, setCodeInput] = useState("");
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  /** How the guest will pay: full amount or deposit; security deposit with the first payment or before check-in. */
+  const [plan, setPlan] = useState<PaymentPlan>("FULL");
+  const [depositTiming, setDepositTiming] = useState<DepositTiming>("WITH_FIRST_PAYMENT");
   const [form, setForm] = useState({ name: "", nationalId: "", phone: "", email: "", guestCount: "", notes: "", acceptTerms: false, website: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,6 +147,8 @@ export default function BookingForm() {
           nationalId: form.nationalId,
           // Only a code the server accepted for this quote is sent; the amount is never sent.
           discountCode: quote.discount ? quote.discount.code : null,
+          paymentPlan: plan === "DEPOSIT" && quote.paymentOptions?.depositPlan ? "DEPOSIT" : "FULL",
+          depositTiming,
           phone: form.phone,
           email: form.email || null,
           guestCount: form.guestCount ? Number(form.guestCount) : null,
@@ -336,6 +341,7 @@ export default function BookingForm() {
                 {appliedCode && quote.discountError && <p role="alert" className="mt-2 text-sm text-red-700">{quote.discountError}</p>}
                 {quote.discount && <p className="mt-2 text-sm text-emerald-700">تم تطبيق الخصم. التأمين لا يدخل في الخصم.</p>}
               </div>
+              <PaymentChoice quote={quote} plan={plan} setPlan={setPlan} depositTiming={depositTiming} setDepositTiming={setDepositTiming} />
             </div>
           ) : (
             <p className="text-sm text-jood-ink/80">{quote.reason}</p>
@@ -428,6 +434,25 @@ function Receipt({ receipt, phone }: { receipt: BookingReceipt; phone: string })
         {receipt.deposit > 0 && <div className="flex justify-between gap-4"><dt>مبلغ التأمين (مسترد)</dt><dd>{formatSAR(receipt.deposit)}</dd></div>}
         <div className="flex justify-between gap-4 border-t border-jood-green/10 pt-2 font-semibold text-jood-green"><dt>الإجمالي المستحق</dt><dd>{formatSAR(receipt.payable)}</dd></div>
       </dl>
+      {receipt.dueNow !== undefined && (
+        <div className="mt-4 rounded-2xl border border-jood-gold/40 p-5 text-sm">
+          <p className="flex justify-between gap-4 font-display text-lg font-semibold text-jood-green">
+            <span>المطلوب تحويله لتأكيد الحجز</span><span>{formatSAR(receipt.dueNow)}</span>
+          </p>
+          <p className="mt-2 leading-7 text-jood-ink/75">
+            {receipt.paymentPlan === "DEPOSIT" ? `عربون ${formatSAR(receipt.upfront ?? 0)}` : `كامل مبلغ الحجز ${formatSAR(receipt.total)}`}
+            {receipt.depositTiming === "WITH_FIRST_PAYMENT" && receipt.deposit > 0 ? ` + التأمين ${formatSAR(receipt.deposit)}` : ""}.
+            {(() => {
+              const later = [
+                receipt.paymentPlan === "DEPOSIT" ? `باقي مبلغ الحجز ${formatSAR(receipt.total - (receipt.upfront ?? 0))}` : null,
+                receipt.depositTiming === "BEFORE_CHECKIN" && receipt.deposit > 0 ? `التأمين ${formatSAR(receipt.deposit)}` : null,
+              ].filter(Boolean);
+              return later.length ? ` ويُسدَّد ${later.join(" و")} قبل موعد الدخول بـ ${receipt.balanceDueHours ?? 24} ساعة.` : "";
+            })()}
+          </p>
+          <p className="mt-2 text-xs text-jood-ink/60">يصلك رمز الدخول بعد اكتمال سداد مبلغ الحجز والتأمين.</p>
+        </div>
+      )}
 
       {receipt.bank && (
         <div className="mt-6">
@@ -451,5 +476,75 @@ function Receipt({ receipt, phone }: { receipt: BookingReceipt; phone: string })
       )}
       <p className="mt-6 text-xs text-jood-ink/60">احتفظ برقم الطلب للتواصل بخصوص حجزك.</p>
     </section>
+  );
+}
+
+/** The two ways to pay, with the exact amounts from the server's quote. The deposit is shown separately. */
+function PaymentChoice({
+  quote,
+  plan,
+  setPlan,
+  depositTiming,
+  setDepositTiming,
+}: {
+  quote: Extract<Quote, { available: true }>;
+  plan: PaymentPlan;
+  setPlan: (p: PaymentPlan) => void;
+  depositTiming: DepositTiming;
+  setDepositTiming: (t: DepositTiming) => void;
+}) {
+  const dp = quote.paymentOptions?.depositPlan ?? null;
+  const hours = quote.paymentOptions?.balanceDueHours ?? 24;
+  const chosen = plan === "DEPOSIT" && dp ? "DEPOSIT" : "FULL";
+  const upfront = chosen === "DEPOSIT" ? dp!.upfront : quote.total;
+  const dueNow = upfront + (depositTiming === "WITH_FIRST_PAYMENT" ? quote.deposit : 0);
+  const option = "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm transition";
+  const on = "border-jood-gold bg-jood-gold/10";
+  const off = "border-jood-green/15";
+  return (
+    <div className="mt-5 border-t border-jood-green/10 pt-4">
+      <fieldset>
+        <legend className="text-sm font-medium">طريقة الدفع</legend>
+        <div className="mt-2 grid gap-2">
+          <label className={`${option} ${chosen === "FULL" ? on : off}`}>
+            <input type="radio" name="plan" className="mt-1 accent-jood-green" checked={chosen === "FULL"} onChange={() => setPlan("FULL")} />
+            <span>
+              <span className="block font-medium">دفع كامل المبلغ مقدمًا</span>
+              <span className="text-jood-ink/70">{formatSAR(quote.total)}</span>
+            </span>
+          </label>
+          {dp && (
+            <label className={`${option} ${chosen === "DEPOSIT" ? on : off}`}>
+              <input type="radio" name="plan" className="mt-1 accent-jood-green" checked={chosen === "DEPOSIT"} onChange={() => setPlan("DEPOSIT")} />
+              <span>
+                <span className="block font-medium">عربون {dp.percent}% مقدمًا</span>
+                <span className="text-jood-ink/70">
+                  {formatSAR(dp.upfront)} الآن، والباقي {formatSAR(quote.total - dp.upfront)} قبل الدخول بـ {hours} ساعة
+                </span>
+              </span>
+            </label>
+          )}
+        </div>
+      </fieldset>
+      {quote.deposit > 0 && (
+        <fieldset className="mt-4">
+          <legend className="text-sm font-medium">التأمين ({formatSAR(quote.deposit)} — يُسترد بعد المغادرة)</legend>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <label className={`${option} ${depositTiming === "WITH_FIRST_PAYMENT" ? on : off}`}>
+              <input type="radio" name="depositTiming" className="mt-1 accent-jood-green" checked={depositTiming === "WITH_FIRST_PAYMENT"} onChange={() => setDepositTiming("WITH_FIRST_PAYMENT")} />
+              <span>مع {chosen === "DEPOSIT" ? "العربون" : "الدفعة المقدمة"}</span>
+            </label>
+            <label className={`${option} ${depositTiming === "BEFORE_CHECKIN" ? on : off}`}>
+              <input type="radio" name="depositTiming" className="mt-1 accent-jood-green" checked={depositTiming === "BEFORE_CHECKIN"} onChange={() => setDepositTiming("BEFORE_CHECKIN")} />
+              <span>قبل الدخول بـ {hours} ساعة</span>
+            </label>
+          </div>
+        </fieldset>
+      )}
+      <p className="mt-4 flex justify-between rounded-xl bg-jood-green px-4 py-3 text-jood-beige">
+        <span>المطلوب الآن لتأكيد الحجز</span>
+        <strong>{formatSAR(dueNow)}</strong>
+      </p>
+    </div>
   );
 }

@@ -80,13 +80,16 @@ const SECTIONS: SectionDef[] = [
   },
   {
     key: "bookingPolicy",
-    title: "سياسة الحجز",
+    title: "سياسة الحجز وخيارات الدفع",
     ownerOnly: true,
     fields: [
       { path: "securityDeposit", label: "مبلغ التأمين المسترد (ريال)", type: "number" },
       { path: "unpaidExpiryHours", label: "مهلة الدفع بالساعات", type: "nullableNumber", hint: "تبدأ عند تحويل الطلب إلى «بانتظار الدفع». اتركه فارغًا لإيقاف الإلغاء التلقائي." },
       { path: "maxNights", label: "أقصى عدد أيام للحجز الواحد", type: "number" },
       { path: "maxAdvanceDays", label: "أقصى مدة للحجز مقدمًا (أيام)", type: "number" },
+      { path: "allowDepositPlan", label: "إتاحة خيار العربون للضيف", type: "bool" },
+      { path: "depositPercent", label: "نسبة العربون من مبلغ الحجز (%)", type: "number", hint: "تُحسب بعد الخصم. التأمين منفصل." },
+      { path: "balanceDueHours", label: "آخر موعد لسداد المتبقي والتأمين (ساعات قبل الدخول)", type: "number", hint: "بعده يصلك تنبيه إذا لم يكتمل السداد، والقرار لك. رمز الدخول لا يظهر للضيف حتى يكتمل السداد." },
     ],
   },
   {

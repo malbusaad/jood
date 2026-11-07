@@ -228,8 +228,23 @@ export const settingDefinitions = {
       /** أقصى عدد أيام مقدمًا يمكن الحجز فيه */
       maxAdvanceDays: z.number().int().min(1).max(730),
       maxNights: z.number().int().min(1).max(30),
+      // ─── خيارات الدفع (لها قيم افتراضية حتى لا تضيع إعدادات محفوظة قبل إضافتها) ───
+      /** إتاحة خيار العربون للضيف */
+      allowDepositPlan: z.boolean().default(true),
+      /** نسبة العربون من مبلغ الحجز بعد الخصم */
+      depositPercent: z.number().int().min(10).max(90).default(50),
+      /** آخر موعد لسداد المتبقي والتأمين: عدد الساعات قبل وقت الدخول. بعده يصل المالكَ تنبيه */
+      balanceDueHours: z.number().int().min(1).max(24 * 14).default(24),
     }),
-    initial: { unpaidExpiryHours: 15, securityDeposit: 500, maxAdvanceDays: 365, maxNights: 7 },
+    initial: {
+      unpaidExpiryHours: 15,
+      securityDeposit: 500,
+      maxAdvanceDays: 365,
+      maxNights: 7,
+      allowDepositPlan: true,
+      depositPercent: 50,
+      balanceDueHours: 24,
+    },
   },
   guestPortal: {
     public: false,

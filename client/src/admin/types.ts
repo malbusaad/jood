@@ -16,7 +16,8 @@ export type BookingStatus =
   | "EXPIRED"
   | "COMPLETED";
 export type Channel = "WEBSITE" | "GATHERN" | "MANUAL";
-export type PaymentMethod = "BANK_TRANSFER" | "GATHERN";
+export type PaymentMethod = "BANK_TRANSFER" | "GATHERN" | "CASH";
+export type PaymentPurpose = "BOOKING" | "SECURITY_DEPOSIT";
 
 export interface ResourceRef {
   id: string;
@@ -44,6 +45,8 @@ export interface BookingSummary {
 export interface Payment {
   id: string;
   method: PaymentMethod;
+  purpose?: PaymentPurpose;
+  kind?: "PAYMENT" | "REFUND";
   amount: string;
   status: "PENDING" | "ACCEPTED" | "REJECTED";
   reportedAt: string | null;
@@ -65,6 +68,7 @@ export interface BookingDetail {
   totalAmount: string;
   depositAmount: string;
   discountAmount?: string;
+  payment?: PaymentSummary;
   discountCode?: string | null;
   priceBreakdown: { date: string; resourceId: string; resourceName: string; price: string }[];
   guestCount: number | null;
@@ -107,7 +111,7 @@ export interface Dashboard {
 
 export interface Notification {
   id: string;
-  type: "NEW_BOOKING" | "PAYMENT_REPORTED" | "BOOKING_CANCELLED" | "SYSTEM";
+  type: "NEW_BOOKING" | "PAYMENT_REPORTED" | "PAYMENT_DUE" | "BOOKING_CANCELLED" | "SYSTEM";
   title: string;
   body: string;
   bookingId: string | null;
@@ -156,4 +160,26 @@ export interface Guest {
   createdAt: string;
   bookingCount: number;
   lastStay: string | null;
+}
+
+/** Server-computed money summary of a booking (booking amount and security deposit kept apart). */
+export interface PaymentSummary {
+  plan: "FULL" | "DEPOSIT";
+  depositTiming: "WITH_FIRST_PAYMENT" | "BEFORE_CHECKIN";
+  legacy: boolean;
+  bookingTotal: string;
+  upfrontAmount: string;
+  bookingPaid: string;
+  bookingRefunded: string;
+  bookingRemaining: string;
+  upfrontRemaining: string;
+  securityDeposit: string;
+  depositPaid: string;
+  depositRefunded: string;
+  depositRemaining: string;
+  depositStatus: "NONE" | "UNPAID" | "PARTIAL" | "PAID" | "REFUNDED" | "PARTIALLY_REFUNDED";
+  dueToConfirm: string;
+  canConfirm: boolean;
+  fullySettled: boolean;
+  balanceDueAt: string | null;
 }

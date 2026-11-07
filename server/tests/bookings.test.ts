@@ -220,13 +220,18 @@ describe("statuses, payments and confirmation", () => {
     expect((await agent.post(`/api/admin/bookings/${b.id}/status`).send({ status: "CONFIRMED" })).status).toBe(409);
 
     await agent.post(`/api/admin/bookings/${b.id}/payments`).send({ method: "BANK_TRANSFER", amount: 450, reportedAt: new Date().toISOString(), note: "تحويل ثاني" }).expect(201);
+    // The guest chose to pay the security deposit with the first payment: it is needed too.
+    const noDeposit = await agent.post(`/api/admin/bookings/${b.id}/status`).send({ status: "CONFIRMED" });
+    expect(noDeposit.status).toBe(409);
+    expect(noDeposit.body.error).toMatch(/ومن التأمين 500/);
+    await agent.post(`/api/admin/bookings/${b.id}/payments`).send({ method: "BANK_TRANSFER", purpose: "SECURITY_DEPOSIT", amount: 500 }).expect(201);
     const ok = await agent.post(`/api/admin/bookings/${b.id}/status`).send({ status: "CONFIRMED" });
     expect(ok.status).toBe(200);
     const confirmed = await db.booking.findUniqueOrThrow({ where: { id: b.id }, include: { payments: true } });
     expect(confirmed.status).toBe("CONFIRMED");
     expect(confirmed.confirmedById).toBe(user.id);
     expect(confirmed.payments.every((p) => p.status === "ACCEPTED" && p.verifiedById === user.id && p.verifiedAt)).toBe(true);
-    expect(await db.auditLog.count({ where: { action: "payment.verified" } })).toBe(2);
+    expect(await db.auditLog.count({ where: { action: "payment.verified" } })).toBe(3);
   });
 
   it("does not treat an uploaded/pending payment as received", async () => {
@@ -246,6 +251,7 @@ describe("statuses, payments and confirmation", () => {
 
     const p2 = await db.payment.create({ data: { bookingId: b.id, method: "BANK_TRANSFER", amount: 950 } });
     expect((await agent.post(`/api/admin/bookings/payments/${p2.id}/accept`).send({})).body.status).toBe("ACCEPTED");
+    await agent.post(`/api/admin/bookings/${b.id}/payments`).send({ method: "CASH", purpose: "SECURITY_DEPOSIT", amount: 500 }).expect(201);
     expect((await agent.post(`/api/admin/bookings/${b.id}/status`).send({ status: "CONFIRMED" })).status).toBe(200);
   });
 
@@ -288,6 +294,7 @@ describe("statuses, payments and confirmation", () => {
     const { agent } = await signedIn(app);
     const b = await newBooking();
     await agent.post(`/api/admin/bookings/${b.id}/payments`).send({ method: "BANK_TRANSFER", amount: 950 }).expect(201);
+    await agent.post(`/api/admin/bookings/${b.id}/payments`).send({ method: "BANK_TRANSFER", purpose: "SECURITY_DEPOSIT", amount: 500 }).expect(201);
     await agent.post(`/api/admin/bookings/${b.id}/status`).send({ status: "CONFIRMED" }).expect(200);
     await db.booking.update({ where: { id: b.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
     expect((await book([(await fullResource()).id], SUN, 1, guest(5))).status).toBe(409);
@@ -370,11 +377,12 @@ describe("admin views", () => {
     await book([majlis.id], SUN, 1, guest(2));
     const b1 = await db.booking.findUniqueOrThrow({ where: { reference: r1.body.reference } });
     await agent.post(`/api/admin/bookings/${b1.id}/payments`).send({ method: "BANK_TRANSFER", amount: 1200 }).expect(201);
+    await agent.post(`/api/admin/bookings/${b1.id}/payments`).send({ method: "BANK_TRANSFER", purpose: "SECURITY_DEPOSIT", amount: 500 }).expect(201);
     await agent.post(`/api/admin/bookings/${b1.id}/status`).send({ status: "CONFIRMED" }).expect(200);
     await db.amenity.update({ where: { slug: "volleyball" }, data: { available: false } });
 
     const d = (await agent.get("/api/admin/dashboard")).body;
-    expect(d).toMatchObject({ upcoming: 2, confirmedUpcoming: 1, newRequests: 1, revenueAll: "1200", unreadNotifications: 2 });
+    expect(d).toMatchObject({ upcoming: 2, confirmedUpcoming: 1, newRequests: 1, revenueAll: "1200", unreadNotifications: 2 /* the deposit is not revenue */ });
     expect(d.unavailableAmenities.map((a: { name: string }) => a.name)).toEqual(["ملعب كرة الطائرة"]);
 
     const cal = (await agent.get(`/api/admin/calendar?from=${SUN}&to=${addDays(SUN, 7)}`)).body;

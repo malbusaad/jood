@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { ArrowRight, CheckCircle2, Circle, FileText, MessageCircle, Printer } from "lucide-react";
-import type { BookingDetail, BookingStatus, PaymentMethod } from "../types";
-import { ACTION_LABEL, CHANNEL, METHOD, PAYMENT_STATUS, STATUS } from "../labels";
+import type { BookingDetail, BookingStatus, PaymentMethod, PaymentPurpose } from "../types";
+import { ACTION_LABEL, CHANNEL, DEPOSIT_STATUS, DEPOSIT_TIMING, METHOD, PAYMENT_STATUS, PLAN, PURPOSE, STATUS } from "../labels";
+import { useUser } from "../auth";
 import { formatDateAr } from "../../lib/format";
 import { waLink, waMessages } from "../whatsapp";
 import GuestLinkCard from "./GuestLinkCard";
@@ -20,7 +21,9 @@ export default function BookingDetailPage() {
   const { data: b, error, loading, reload } = useApi<BookingDetail>(`/api/admin/bookings/${id}`);
   const m = useMutation();
   const [reason, setReason] = useState("");
-  const [pay, setPay] = useState<{ method: PaymentMethod; amount: string; externalRef: string; note: string }>({ method: "BANK_TRANSFER", amount: "", externalRef: "", note: "" });
+  const [pay, setPay] = useState<{ method: PaymentMethod; purpose: PaymentPurpose; amount: string; externalRef: string; note: string }>({ method: "BANK_TRANSFER", purpose: "BOOKING", amount: "", externalRef: "", note: "" });
+  const [refund, setRefund] = useState<{ purpose: PaymentPurpose; method: PaymentMethod; amount: string; note: string } | null>(null);
+  const owner = useUser().role === "OWNER";
   const [notes, setNotes] = useState<string | null>(null);
 
   if (loading && !b) return <Loading />;
@@ -30,6 +33,7 @@ export default function BookingDetailPage() {
   const total = Number(b.totalAmount);
   const deposit = Number(b.depositAmount);
   const paid = Number(b.paid);
+  const ps = b.payment;
   const resources = [...new Map(b.items.map((i) => [i.resource.id, i.resource])).values()];
   const messages = waMessages(b);
   const suggested = b.status === "CONFIRMED" ? "confirmed" : b.contractAcceptedAt ? "payment" : "contract";
@@ -53,12 +57,23 @@ export default function BookingDetailPage() {
     if (!amount) return m.setError("أدخل المبلغ");
     const r = await m.run(`/api/admin/bookings/${b!.id}/payments`, "POST", {
       method: pay.method,
+      purpose: pay.purpose,
       amount,
       externalRef: pay.externalRef || null,
       note: pay.note || null,
     });
     if (r) {
-      setPay({ method: "BANK_TRANSFER", amount: "", externalRef: "", note: "" });
+      setPay({ method: "BANK_TRANSFER", purpose: "BOOKING", amount: "", externalRef: "", note: "" });
+      reload();
+    }
+  }
+
+  async function recordRefund() {
+    if (!refund || !Number(refund.amount)) return m.setError("أدخل مبلغ الاسترداد");
+    if (!confirm(`تسجيل استرداد ${refund.amount} ريال من ${PURPOSE[refund.purpose]}؟`)) return;
+    const r = await m.run(`/api/admin/bookings/${b!.id}/refunds`, "POST", { ...refund, amount: Number(refund.amount), note: refund.note || null });
+    if (r) {
+      setRefund(null);
       reload();
     }
   }
@@ -127,8 +142,25 @@ export default function BookingDetailPage() {
               <div className="flex justify-between"><dt>مبلغ الحجز</dt><dd>{money(total)}</dd></div>
               <div className="flex justify-between text-jood-ink/65"><dt>التأمين (مسترد)</dt><dd>{money(deposit)}</dd></div>
               <div className="flex justify-between font-semibold text-jood-green"><dt>الإجمالي المستحق</dt><dd>{money(total + deposit)}</dd></div>
-              <div className="flex justify-between"><dt>المدفوع (متحقق منه)</dt><dd className={paid >= total ? "text-emerald-700" : "text-amber-800"}>{money(paid)}</dd></div>
+              <div className="flex justify-between"><dt>المدفوع من مبلغ الحجز (متحقق منه)</dt><dd className={paid >= total ? "text-emerald-700" : "text-amber-800"}>{money(paid)}</dd></div>
             </dl>
+            {ps && !ps.legacy && (
+              <dl className="mt-3 space-y-1 rounded-xl bg-jood-beige/60 p-3 text-sm" aria-label="حالة السداد">
+                <div className="flex justify-between"><dt>طريقة السداد</dt><dd>{PLAN[ps.plan]}</dd></div>
+                {ps.plan === "DEPOSIT" && <div className="flex justify-between"><dt>العربون المطلوب للتأكيد</dt><dd>{money(ps.upfrontAmount)}</dd></div>}
+                <div className="flex justify-between"><dt>المتبقي من مبلغ الحجز</dt><dd className={Number(ps.bookingRemaining) > 0 ? "text-amber-800" : "text-emerald-700"}>{money(ps.bookingRemaining)}</dd></div>
+                {Number(ps.securityDeposit) > 0 && (
+                  <>
+                    <div className="flex justify-between"><dt>التأمين ({DEPOSIT_TIMING[ps.depositTiming]})</dt><dd>{DEPOSIT_STATUS[ps.depositStatus]}</dd></div>
+                    {Number(ps.depositRemaining) > 0 && <div className="flex justify-between"><dt>المتبقي من التأمين</dt><dd className="text-amber-800">{money(ps.depositRemaining)}</dd></div>}
+                  </>
+                )}
+                {ps.balanceDueAt && !ps.fullySettled && <div className="flex justify-between text-jood-ink/65"><dt>آخر موعد لسداد المتبقي</dt><dd>{dateTime(ps.balanceDueAt)}</dd></div>}
+                <div className={`flex justify-between font-medium ${ps.fullySettled ? "text-emerald-700" : "text-amber-800"}`}>
+                  <dt>رمز الدخول للضيف</dt><dd>{ps.fullySettled ? "يظهر (السداد مكتمل)" : "مخفي حتى اكتمال السداد"}</dd>
+                </div>
+              </dl>
+            )}
           </Card>
 
           <Card title="المدفوعات">
@@ -139,7 +171,7 @@ export default function BookingDetailPage() {
                 {b.payments.map((p) => (
                   <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                     <div>
-                      <span className="font-medium">{money(p.amount)}</span> · {METHOD[p.method]}
+                      <span className="font-medium">{p.kind === "REFUND" ? "استرداد " : ""}{money(p.amount)}</span> · {PURPOSE[p.purpose ?? "BOOKING"]} · {METHOD[p.method]}
                       {p.externalRef && <span dir="ltr"> · {p.externalRef}</span>}
                       <span className={`ms-2 rounded-full px-2 py-0.5 text-xs ${p.status === "ACCEPTED" ? "bg-emerald-100 text-emerald-900" : p.status === "REJECTED" ? "bg-stone-200" : "bg-orange-100 text-orange-900"}`}>{PAYMENT_STATUS[p.status]}</span>
                       <div className="text-xs text-jood-ink/55">
@@ -161,14 +193,21 @@ export default function BookingDetailPage() {
               <div className="mt-4 rounded-xl bg-jood-beige/60 p-4 print:hidden">
                 <p className="mb-3 text-sm font-medium">تسجيل دفعة تحققت من وصولها</p>
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="عن">
+                    <select value={pay.purpose} onChange={(e) => setPay({ ...pay, purpose: e.target.value as PaymentPurpose })} className={inputClass}>
+                      <option value="BOOKING">مبلغ الحجز</option>
+                      {deposit > 0 && <option value="SECURITY_DEPOSIT">التأمين</option>}
+                    </select>
+                  </Field>
                   <Field label="الطريقة">
                     <select value={pay.method} onChange={(e) => setPay({ ...pay, method: e.target.value as PaymentMethod })} className={inputClass}>
                       <option value="BANK_TRANSFER">تحويل بنكي</option>
                       <option value="GATHERN">جاذر إن</option>
+                      <option value="CASH">نقدًا</option>
                     </select>
                   </Field>
                   <Field label="المبلغ (ريال)">
-                    <input type="number" min={0} step="0.01" inputMode="decimal" value={pay.amount} onChange={(e) => setPay({ ...pay, amount: e.target.value })} placeholder={String(Math.max(total - paid, 0))} className={inputClass} />
+                    <input type="number" min={0} step="0.01" inputMode="decimal" value={pay.amount} onChange={(e) => setPay({ ...pay, amount: e.target.value })} placeholder={pay.purpose === "BOOKING" ? (ps?.bookingRemaining ?? String(Math.max(total - paid, 0))) : (ps?.depositRemaining ?? String(deposit))} className={inputClass} />
                   </Field>
                   <Field label="مرجع (اختياري)" hint="رقم العملية أو رقم الحجز في جاذر إن">
                     <input value={pay.externalRef} onChange={(e) => setPay({ ...pay, externalRef: e.target.value })} className={inputClass} dir="ltr" />
@@ -179,6 +218,44 @@ export default function BookingDetailPage() {
                 </div>
                 <p className="mt-2 text-xs text-jood-ink/60">سجّل الدفعة فقط بعد التأكد من وصول المبلغ إلى الحساب. صورة الإيصال وحدها لا تكفي. لا تُضاف أي رسوم لجاذر إن تلقائيًا.</p>
                 <Button className="mt-3" busy={m.busy} onClick={recordPayment}>تسجيل الدفعة</Button>
+              </div>
+            )}
+            {owner && ps && (Number(ps.bookingPaid) > 0 || Number(ps.depositPaid) > Number(ps.depositRefunded)) && (
+              <div className="mt-3 print:hidden">
+                {!refund ? (
+                  <Button variant="ghost" onClick={() => setRefund({ purpose: Number(ps.depositPaid) > Number(ps.depositRefunded) ? "SECURITY_DEPOSIT" : "BOOKING", method: "BANK_TRANSFER", amount: "", note: "" })}>
+                    تسجيل استرداد للضيف
+                  </Button>
+                ) : (
+                  <div className="rounded-xl border border-jood-green/15 p-4">
+                    <p className="mb-3 text-sm font-medium">تسجيل مبلغ أُعيد للضيف (يُضاف للسجل ولا تُحذف أي دفعة)</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="عن">
+                        <select value={refund.purpose} onChange={(e) => setRefund({ ...refund, purpose: e.target.value as PaymentPurpose })} className={inputClass}>
+                          <option value="SECURITY_DEPOSIT">التأمين</option>
+                          <option value="BOOKING">مبلغ الحجز</option>
+                        </select>
+                      </Field>
+                      <Field label="الطريقة">
+                        <select value={refund.method} onChange={(e) => setRefund({ ...refund, method: e.target.value as PaymentMethod })} className={inputClass}>
+                          <option value="BANK_TRANSFER">تحويل بنكي</option>
+                          <option value="CASH">نقدًا</option>
+                          <option value="GATHERN">جاذر إن</option>
+                        </select>
+                      </Field>
+                      <Field label="المبلغ المُعاد (ريال)">
+                        <input type="number" min={0} step="0.01" value={refund.amount} onChange={(e) => setRefund({ ...refund, amount: e.target.value })} className={inputClass} />
+                      </Field>
+                      <Field label="ملاحظة (مثل: خصم أضرار)">
+                        <input value={refund.note} onChange={(e) => setRefund({ ...refund, note: e.target.value })} className={inputClass} />
+                      </Field>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <Button busy={m.busy} onClick={recordRefund}>تسجيل الاسترداد</Button>
+                      <Button variant="ghost" onClick={() => setRefund(null)}>إلغاء</Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </Card>
@@ -253,12 +330,15 @@ export default function BookingDetailPage() {
                 {b.allowedTransitions
                   .filter((s) => s !== "CANCELLED" && s !== "REJECTED")
                   .map((s) => (
-                    <Button key={s} variant={s === "CONFIRMED" ? "primary" : "secondary"} busy={m.busy} onClick={() => setStatus(s)} disabled={s === "CONFIRMED" && paid < total}>
+                    <Button key={s} variant={s === "CONFIRMED" ? "primary" : "secondary"} busy={m.busy} onClick={() => setStatus(s)} disabled={s === "CONFIRMED" && (ps ? !ps.canConfirm : paid < total)}>
                       {ACTION_LABEL[s]}
                     </Button>
                   ))}
-                {b.allowedTransitions.includes("CONFIRMED") && paid < total && (
-                  <p className="text-xs text-jood-ink/60">للتأكيد: سجّل دفعة متحقق منها تغطي مبلغ الحجز ({money(total)}).</p>
+                {b.allowedTransitions.includes("CONFIRMED") && (ps ? !ps.canConfirm : paid < total) && (
+                  <p className="text-xs text-jood-ink/60">
+                    للتأكيد: سجّل دفعات متحقق منها بقيمة {money(ps ? ps.dueToConfirm : total - paid)}
+                    {ps && !ps.legacy && ps.depositTiming === "WITH_FIRST_PAYMENT" && Number(ps.depositRemaining) > 0 ? " (تشمل التأمين)" : ""}.
+                  </p>
                 )}
                 {(b.allowedTransitions.includes("CANCELLED") || b.allowedTransitions.includes("REJECTED")) && (
                   <div className="mt-2 border-t border-jood-green/10 pt-3">

@@ -68,3 +68,12 @@ describe("guest portal page", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("انتهت صلاحية هذا الرابط");
   });
 });
+
+describe("guest portal — payment not complete", () => {
+  it("shows what is still owed instead of the entry code and Wi-Fi", async () => {
+    renderPortal({ status: 200, body: { ...portal, codesAvailableOn: null, paymentPending: { bookingRemaining: 600, depositRemaining: 500, dueBy: null } } });
+    expect(await screen.findByText(/بعد اكتمال السداد والتحقق منه/)).toBeInTheDocument();
+    expect(screen.getByText("المتبقي من مبلغ الحجز: 600 ريال")).toBeInTheDocument();
+    expect(screen.getByText("مبلغ التأمين (يُسترد بعد المغادرة): 500 ريال")).toBeInTheDocument();
+  });
+});

@@ -11,7 +11,7 @@ export default function NewBookingPage() {
   const navigate = useNavigate();
   const { data } = useApi<{ resources: (ResourceRef & { active: boolean })[] }>("/api/admin/resources");
   const m = useMutation();
-  const [f, setF] = useState({ channel: "GATHERN" as "GATHERN" | "MANUAL", startDate: "", nights: 1, resourceIds: [] as string[], name: "", nationalId: "", phone: "", guestCount: "", adminNotes: "" });
+  const [f, setF] = useState({ channel: "GATHERN" as "GATHERN" | "MANUAL", startDate: "", nights: 1, resourceIds: [] as string[], name: "", nationalId: "", phone: "", guestCount: "", adminNotes: "", paymentPlan: "FULL" as "FULL" | "DEPOSIT", depositTiming: "WITH_FIRST_PAYMENT" as "WITH_FIRST_PAYMENT" | "BEFORE_CHECKIN", securityDeposit: "" });
   const [quote, setQuote] = useState<Q | null>(null);
 
   const resources = data?.resources.filter((r) => r.active) ?? [];
@@ -47,6 +47,10 @@ export default function NewBookingPage() {
       phone: f.phone,
       guestCount: f.guestCount ? Number(f.guestCount) : null,
       adminNotes: f.adminNotes || null,
+      paymentPlan: f.paymentPlan,
+      depositTiming: f.depositTiming,
+      // Empty = the deposit from settings; 0 = no security deposit (e.g. paid through Gathern).
+      securityDeposit: f.securityDeposit === "" ? null : Number(f.securityDeposit),
     });
     if (r) navigate(`/admin/bookings/${r.id}`);
   }
@@ -94,6 +98,21 @@ export default function NewBookingPage() {
           </Field>
           <Field label="الجوال (واتساب)">
             <input type="tel" dir="ltr" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className={`${inputClass} text-end`} placeholder="05xxxxxxxx" />
+          </Field>
+          <Field label="طريقة السداد">
+            <select value={f.paymentPlan} onChange={(e) => setF({ ...f, paymentPlan: e.target.value as typeof f.paymentPlan })} className={inputClass}>
+              <option value="FULL">كامل المبلغ مقدمًا</option>
+              <option value="DEPOSIT">عربون والباقي قبل الدخول</option>
+            </select>
+          </Field>
+          <Field label="مبلغ التأمين (ريال)" hint="اتركه فارغًا لاستخدام المبلغ في الإعدادات، أو 0 بلا تأمين">
+            <input type="number" min={0} step="0.01" value={f.securityDeposit} onChange={(e) => setF({ ...f, securityDeposit: e.target.value })} className={inputClass} />
+          </Field>
+          <Field label="سداد التأمين">
+            <select value={f.depositTiming} onChange={(e) => setF({ ...f, depositTiming: e.target.value as typeof f.depositTiming })} className={inputClass}>
+              <option value="WITH_FIRST_PAYMENT">مع الدفعة الأولى</option>
+              <option value="BEFORE_CHECKIN">قبل الدخول</option>
+            </select>
           </Field>
           <Field label="عدد الضيوف (اختياري)">
             <input type="number" min={1} value={f.guestCount} onChange={(e) => setF({ ...f, guestCount: e.target.value })} className={inputClass} />
