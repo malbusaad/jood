@@ -38,7 +38,7 @@ describe("booking form", () => {
 
     expect(await screen.findByRole("radio", { name: /الاستراحة كاملة/ })).toBeChecked();
     expect(await screen.findByText("الإجمالي المستحق")).toBeInTheDocument();
-    expect(screen.getByText("1,700 ريال")).toBeInTheDocument(); // 1,200 + 500 deposit
+    expect(screen.getAllByText("1,700 ريال").length).toBeGreaterThan(0); // 1,200 + 500 deposit
 
     const submit = screen.getByRole("button", { name: "إرسال طلب الحجز" });
     expect(submit).toBeDisabled(); // name, ID, phone and terms required
@@ -76,7 +76,7 @@ describe("booking form", () => {
     expect(screen.getByRole("checkbox", { name: /الخيمة/ })).toBeDisabled();
     expect(screen.getByText(/الخيمة محجوز يوم الخميس/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: /المجلس/ }));
-    expect(await screen.findByText("900 ريال")).toBeInTheDocument(); // 400 + 500 deposit
+    expect((await screen.findAllByText("900 ريال")).length).toBeGreaterThan(0); // 400 + 500 deposit
   });
 
   it("shows the server's message when the date was just taken", async () => {
@@ -101,21 +101,21 @@ describe("booking form", () => {
   it("applies a discount code checked by the server, and sends only the accepted code", async () => {
     const { fetchMock } = renderApp("/booking", { options: [FULL], booking: { status: 201, body: { ...receipt, subtotal: 1200, discount: { code: "JOOD10", amount: 120 }, total: 1080, payable: 1580 } } });
     await pickThursday();
-    expect(await screen.findByText("1,700 ريال")).toBeInTheDocument();
+    expect((await screen.findAllByText("1,700 ريال")).length).toBeGreaterThan(0);
 
     const field = screen.getByLabelText("كود الخصم (اختياري)");
     fireEvent.change(field, { target: { value: "WRONG" } });
     fireEvent.click(screen.getByRole("button", { name: "تطبيق" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("كود الخصم غير صحيح أو غير مفعّل");
-    expect(screen.getByText("1,700 ريال")).toBeInTheDocument();
+    expect(screen.getAllByText("1,700 ريال").length).toBeGreaterThan(0);
 
     fireEvent.change(field, { target: { value: "jood10" } });
     fireEvent.click(screen.getByRole("button", { name: "تطبيق" }));
     expect(await screen.findByText("تم تطبيق الخصم. التأمين لا يدخل في الخصم.")).toBeInTheDocument();
     expect(screen.getByText("مبلغ الحجز قبل الخصم")).toBeInTheDocument();
     expect(screen.getByText("− 120 ريال")).toBeInTheDocument();
-    expect(screen.getByText("1,080 ريال")).toBeInTheDocument();
-    expect(screen.getByText("1,580 ريال")).toBeInTheDocument(); // 1,080 + 500 deposit (not discounted)
+    expect(screen.getAllByText("1,080 ريال").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("1,580 ريال").length).toBeGreaterThan(0); // 1,080 + 500 deposit (not discounted)
 
     fireEvent.change(screen.getByLabelText("الاسم الثلاثي"), { target: { value: "سارة محمد القحطاني" } });
     fireEvent.change(screen.getByLabelText(/رقم الهوية أو الإقامة/), { target: { value: "1023456789" } });
@@ -129,5 +129,34 @@ describe("booking form", () => {
     expect(body).not.toHaveProperty("discountAmount");
     expect(body).not.toHaveProperty("total");
     expect(screen.getByText("− 120 ريال")).toBeInTheDocument(); // on the receipt too
+  });
+
+  it("offers full payment or a 50% deposit, and when to pay the security deposit, with exact amounts", async () => {
+    const { fetchMock } = renderApp("/booking", {
+      options: [FULL],
+      booking: { status: 201, body: { ...receipt, paymentPlan: "DEPOSIT", depositTiming: "BEFORE_CHECKIN", upfront: 600, dueNow: 600, balanceDueHours: 24 } },
+    });
+    await pickThursday();
+    const fullOpt = await screen.findByRole("radio", { name: /دفع كامل المبلغ مقدمًا/ });
+    expect(fullOpt).toBeChecked();
+    expect(screen.getByText("المطلوب الآن لتأكيد الحجز").nextSibling).toHaveTextContent("1,700 ريال"); // 1,200 + 500
+
+    fireEvent.click(screen.getByRole("radio", { name: /عربون 50% مقدمًا/ }));
+    expect(screen.getByText(/600 ريال الآن، والباقي 600 ريال قبل الدخول بـ 24 ساعة/)).toBeInTheDocument();
+    expect(screen.getByText("المطلوب الآن لتأكيد الحجز").nextSibling).toHaveTextContent("1,100 ريال"); // 600 + 500
+    fireEvent.click(screen.getByRole("radio", { name: "قبل الدخول بـ 24 ساعة" }));
+    expect(screen.getByText("المطلوب الآن لتأكيد الحجز").nextSibling).toHaveTextContent("600 ريال");
+
+    fireEvent.change(screen.getByLabelText("الاسم الثلاثي"), { target: { value: "سارة محمد القحطاني" } });
+    fireEvent.change(screen.getByLabelText(/رقم الهوية أو الإقامة/), { target: { value: "1023456789" } });
+    fireEvent.change(screen.getByLabelText("رقم الجوال (واتساب)"), { target: { value: "0501234567" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /أوافق عليها/ }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال طلب الحجز" }));
+    expect(await screen.findByRole("heading", { name: "تم استلام طلب الحجز" })).toBeInTheDocument();
+    const sent = JSON.parse(String(fetchMock.mock.calls.find(([u]) => String(u).includes("/api/public/bookings"))![1]!.body));
+    expect(sent).toMatchObject({ paymentPlan: "DEPOSIT", depositTiming: "BEFORE_CHECKIN" });
+    expect(sent).not.toHaveProperty("upfront");
+    expect(screen.getByText("المطلوب تحويله لتأكيد الحجز")).toBeInTheDocument();
+    expect(screen.getByText(/ويُسدَّد باقي مبلغ الحجز 600 ريال والتأمين 500 ريال قبل موعد الدخول بـ 24 ساعة/)).toBeInTheDocument();
   });
 });

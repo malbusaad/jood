@@ -31,6 +31,7 @@ async function confirmedBooking(start = nextSunday(), phone = "0500000001") {
   expect(r.status).toBe(201);
   const b = await db.booking.findUniqueOrThrow({ where: { reference: r.body.reference } });
   await agent.post(`/api/admin/bookings/${b.id}/payments`).send({ method: "BANK_TRANSFER", amount: Number(b.totalAmount) }).expect(201);
+  await agent.post(`/api/admin/bookings/${b.id}/payments`).send({ method: "BANK_TRANSFER", purpose: "SECURITY_DEPOSIT", amount: 500 }).expect(201);
   await agent.post(`/api/admin/bookings/${b.id}/status`).send({ status: "CONFIRMED" }).expect(200);
   return { agent, booking: b };
 }

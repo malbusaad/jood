@@ -1,4 +1,4 @@
-import { Prisma, type BookingChannel, type BookingStatus, type PaymentMethod, type PrismaClient } from "@prisma/client";
+import { Prisma, type BookingChannel, type BookingStatus, type DepositTiming, type PaymentMethod, type PaymentPlan, type PaymentPurpose, type PrismaClient } from "@prisma/client";
 import type { Request } from "express";
 import { HttpError } from "../lib/http.js";
 import { addDays, eachDate, fromIsoDate, todayInRiyadh, toIsoDate } from "../lib/dates.js";
@@ -10,6 +10,7 @@ import { blockedResources, lockKeysByResource, resourcesCompatible } from "./con
 import { notifyOwner, type WhatsAppSender } from "./notifications.js";
 import type { SecretBox } from "../lib/secretBox.js";
 import { computeDiscount, findCode, redeem, type AppliedDiscount } from "./discounts.js";
+import { paymentSummary, upfrontFor } from "./payments.js";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -118,6 +119,12 @@ export interface NewBooking extends Selection {
   channel: BookingChannel;
   /** كود الخصم كما أدخله الضيف (مُطبّع) — يُتحقق منه ويُحسب في الخادم */
   discountCode?: string | null;
+  /** كامل المبلغ أو عربون — الافتراضي كامل المبلغ */
+  paymentPlan?: PaymentPlan;
+  /** متى يُدفع التأمين — الافتراضي مع الدفعة الأولى */
+  depositTiming?: DepositTiming;
+  /** للحجوزات اليدوية فقط: مبلغ تأمين مختلف (مثل 0 لحجز جاذر إن) */
+  securityDeposit?: number | null;
 }
 
 async function nextReference(tx: Prisma.TransactionClient): Promise<string> {
@@ -159,6 +166,16 @@ export async function createBooking(
           })
         : null;
 
+      const policy = await getSetting(tx, "bookingPolicy");
+      const plan: PaymentPlan = input.paymentPlan ?? "FULL";
+      if (plan === "DEPOSIT" && input.channel === "WEBSITE" && !policy.allowDepositPlan) {
+        throw new HttpError(400, "خيار العربون غير متاح حاليًا");
+      }
+      const bookingTotal = discount ? discount.total : ev.quote.total;
+      // The deposit percentage applies to the booking amount after any discount; the security deposit is separate.
+      const upfront = upfrontFor(plan, bookingTotal, policy.depositPercent);
+      const securityDeposit = input.channel !== "WEBSITE" && input.securityDeposit != null ? input.securityDeposit : ev.deposit;
+
       const booking = await tx.booking.create({
         data: {
           reference: await nextReference(tx),
@@ -169,7 +186,10 @@ export async function createBooking(
           totalAmount: discount ? discount.total : ev.quote.total,
           discountAmount: discount ? discount.amount : 0,
           discountCode: discount?.code ?? null,
-          depositAmount: ev.deposit,
+          depositAmount: securityDeposit,
+          paymentPlan: plan,
+          upfrontAmount: upfront,
+          depositTiming: input.depositTiming ?? "WITH_FIRST_PAYMENT",
           priceBreakdown: ev.quote.lines as unknown as Prisma.InputJsonValue,
           guestCount: input.guestCount ?? null,
           guestNotes: input.guestNotes ?? null,
@@ -246,8 +266,11 @@ async function lockBooking(tx: Prisma.TransactionClient, id: string) {
   });
 }
 
-export function acceptedPaid(payments: { status: string; amount: Prisma.Decimal }[]) {
-  return payments.filter((p) => p.status === "ACCEPTED").reduce((s, p) => s.add(p.amount), new Prisma.Decimal(0));
+/** Verified booking money received, net of refunds. The security deposit is never counted here. */
+export function acceptedPaid(payments: { status: string; amount: Prisma.Decimal; purpose?: string; kind?: string }[]) {
+  return payments
+    .filter((p) => p.status === "ACCEPTED" && (p.purpose ?? "BOOKING") === "BOOKING")
+    .reduce((s, p) => (p.kind === "REFUND" ? s.sub(p.amount) : s.add(p.amount)), new Prisma.Decimal(0));
 }
 
 export async function changeStatus(db: PrismaClient, req: Request, id: string, to: BookingStatus, reason?: string | null) {
@@ -260,9 +283,14 @@ export async function changeStatus(db: PrismaClient, req: Request, id: string, t
     const data: Prisma.BookingUpdateInput = { status: to };
     if (to === "CONFIRMED") {
       // Never confirm on a request or an uploaded receipt alone: the owner must have verified the money arrived.
-      const paid = acceptedPaid(b.payments);
-      if (paid.lessThan(b.totalAmount)) {
-        throw new HttpError(409, `لا يمكن التأكيد قبل تسجيل دفع متحقق منه يغطي مبلغ الحجز (${b.totalAmount.toFixed(2)} ريال). المسجل: ${paid.toFixed(2)} ريال.`);
+      // Full plan: the whole booking amount. Deposit plan: the agreed up-front part. Plus the security
+      // deposit when the guest chose to pay it with the first payment.
+      const sum = paymentSummary(b);
+      if (!sum.canConfirm) {
+        const parts = [`المطلوب للتأكيد ${sum.dueToConfirm} ريال`];
+        if (Number(sum.upfrontRemaining) > 0) parts.push(`من مبلغ الحجز ${sum.upfrontRemaining}`);
+        if (!b.legacyPayment && b.depositTiming === "WITH_FIRST_PAYMENT" && Number(sum.depositRemaining) > 0) parts.push(`ومن التأمين ${sum.depositRemaining}`);
+        throw new HttpError(409, `لا يمكن التأكيد قبل تسجيل دفع متحقق منه. ${parts.join(" ")}.`);
       }
       // Re-verify availability at confirmation: every slot must still be held by this booking.
       const resourceIds = [...new Set(b.items.map((i) => i.resourceId))];
@@ -302,6 +330,8 @@ export async function changeStatus(db: PrismaClient, req: Request, id: string, t
 
 export interface PaymentInput {
   method: PaymentMethod;
+  /** مبلغ الحجز أو التأمين — الافتراضي مبلغ الحجز */
+  purpose?: PaymentPurpose;
   amount: number;
   reportedAt?: string | null;
   externalRef?: string | null;
@@ -316,9 +346,17 @@ export async function recordVerifiedPayment(db: PrismaClient, req: Request, book
   return db.$transaction(async (tx) => {
     const b = await lockBooking(tx, bookingId);
     if (!ACTIVE_STATUSES.includes(b.status)) throw new HttpError(409, `لا يمكن تسجيل دفع لحجز «${STATUS_LABELS[b.status]}»`);
+    const purpose = p.purpose ?? "BOOKING";
+    // Guard against typing mistakes: never record more than what is still owed for that purpose.
+    const sum = paymentSummary(b);
+    const left = new Prisma.Decimal(purpose === "BOOKING" ? sum.bookingRemaining : sum.depositRemaining);
+    if (left.lessThan(p.amount)) {
+      throw new HttpError(400, `المبلغ أكبر من المتبقي ${purpose === "BOOKING" ? "من مبلغ الحجز" : "من التأمين"} (${left.toFixed(2)} ريال)`);
+    }
     const payment = await tx.payment.create({
       data: {
         bookingId,
+        purpose,
         method: p.method,
         amount: p.amount,
         status: "ACCEPTED",
@@ -333,10 +371,91 @@ export async function recordVerifiedPayment(db: PrismaClient, req: Request, book
       action: "payment.verified",
       entityType: "payment",
       entityId: payment.id,
-      details: { bookingId, method: p.method, amount: p.amount, externalRef: p.externalRef ?? undefined },
+      details: { bookingId, purpose, method: p.method, amount: p.amount, externalRef: p.externalRef ?? undefined },
     });
     return payment;
   });
+}
+
+/**
+ * Records money returned to the guest (e.g. the security deposit after departure, or the booking amount
+ * after a cancellation 72+ hours ahead). A refund is a new record: payments are never edited or deleted.
+ */
+export async function recordRefund(
+  db: PrismaClient,
+  req: Request,
+  bookingId: string,
+  r: { purpose: PaymentPurpose; method: PaymentMethod; amount: number; note?: string | null },
+) {
+  return db.$transaction(async (tx) => {
+    const b = await lockBooking(tx, bookingId);
+    const sum = paymentSummary(b);
+    const refundable = new Prisma.Decimal(r.purpose === "BOOKING" ? sum.bookingPaid : sum.depositPaid).sub(
+      r.purpose === "BOOKING" ? 0 : sum.depositRefunded,
+    );
+    if (refundable.lessThan(r.amount)) {
+      throw new HttpError(400, `مبلغ الاسترداد أكبر من المدفوع ${r.purpose === "BOOKING" ? "من مبلغ الحجز" : "من التأمين"} (${refundable.toFixed(2)} ريال)`);
+    }
+    const refund = await tx.payment.create({
+      data: {
+        bookingId,
+        purpose: r.purpose,
+        kind: "REFUND",
+        method: r.method,
+        amount: r.amount,
+        status: "ACCEPTED",
+        note: r.note ?? null,
+        verifiedAt: new Date(),
+        verifiedById: req.user!.id,
+      },
+    });
+    await audit(tx, req, {
+      action: "payment.refund",
+      entityType: "payment",
+      entityId: refund.id,
+      details: { bookingId, purpose: r.purpose, method: r.method, amount: r.amount },
+    });
+    return refund;
+  });
+}
+
+/**
+ * Once per booking: when the balance deadline (N hours before check-in) has passed and the booking
+ * or the deposit is still not fully paid, the owner is alerted and decides what to do. Nothing is
+ * cancelled automatically. Safe to run repeatedly and from several places (the flag is set atomically).
+ */
+export async function alertUnpaidBalances(db: PrismaClient, whatsapp: WhatsAppSender | null, now = new Date()) {
+  const [policy, stay] = await Promise.all([getSetting(db, "bookingPolicy"), getSetting(db, "stay")]);
+  const horizon = addDays(todayInRiyadh(), Math.ceil(policy.balanceDueHours / 24) + 1);
+  const candidates = await db.booking.findMany({
+    where: { status: "CONFIRMED", legacyPayment: false, balanceAlertAt: null, startDate: { lte: fromIsoDate(horizon) } },
+    include: { payments: true, guest: { select: { name: true, phone: true } } },
+  });
+  let sent = 0;
+  for (const b of candidates) {
+    const sum = paymentSummary(b, { checkIn: stay.checkIn, balanceDueHours: policy.balanceDueHours });
+    if (sum.fullySettled || !sum.balanceDueAt || sum.balanceDueAt > now) continue;
+    // Claim the alert first, so two runs never send it twice.
+    const { count } = await db.booking.updateMany({ where: { id: b.id, balanceAlertAt: null }, data: { balanceAlertAt: now } });
+    if (count === 0) continue;
+    const missing = [
+      Number(sum.bookingRemaining) > 0 ? `المتبقي من مبلغ الحجز: ${sum.bookingRemaining} ريال` : null,
+      Number(sum.depositRemaining) > 0 ? `التأمين غير مسدد: ${sum.depositRemaining} ريال` : null,
+    ].filter(Boolean) as string[];
+    await notifyOwner(
+      db,
+      {
+        type: "PAYMENT_DUE",
+        title: `لم يكتمل السداد ${b.reference}`,
+        body: `${b.guest.name} — ${b.guest.phone}\nالدخول: ${formatDateAr(toIsoDate(b.startDate))}\n${missing.join("\n")}\nرمز الباب لن يظهر للضيف حتى يكتمل السداد.`,
+        bookingId: b.id,
+        whatsappParams: [b.reference, b.guest.name, b.guest.phone, formatDateAr(toIsoDate(b.startDate)), missing.join("، ")],
+      },
+      whatsapp,
+    );
+    sent++;
+  }
+  return sent;
 }
 
 export async function rejectPayment(db: PrismaClient, req: Request, paymentId: string, note: string | null) {

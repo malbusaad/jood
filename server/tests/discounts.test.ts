@@ -140,6 +140,7 @@ describe("discount codes on the website", () => {
     // A confirmed booking that is later cancelled also gives the use back (owner's decision).
     const d = await db.booking.findUniqueOrThrow({ where: { reference: (await book([full.id], SUN, 1, { discountCode: "JOOD10" })).body.reference } });
     await agent.post(`/api/admin/bookings/${d.id}/payments`).send({ method: "BANK_TRANSFER", amount: 855 }).expect(201);
+    await agent.post(`/api/admin/bookings/${d.id}/payments`).send({ method: "BANK_TRANSFER", purpose: "SECURITY_DEPOSIT", amount: 500 }).expect(201);
     await agent.post(`/api/admin/bookings/${d.id}/status`).send({ status: "CONFIRMED" }).expect(200);
     expect((await code()).usedCount).toBe(1);
     await agent.post(`/api/admin/bookings/${d.id}/status`).send({ status: "CANCELLED", reason: "طلب الضيف" }).expect(200);

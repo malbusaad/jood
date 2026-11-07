@@ -107,6 +107,7 @@ export type Quote =
       deposit: number;
       payable: number;
       endDate: string;
+      paymentOptions?: { depositPlan: { percent: number; upfront: number } | null; balanceDueHours: number };
     }
   | { available: false; reason: string };
 
@@ -122,5 +123,15 @@ export interface BookingReceipt {
   total: number;
   deposit: number;
   payable: number;
+  paymentPlan?: PaymentPlan;
+  depositTiming?: DepositTiming;
+  /** مبلغ الحجز المطلوب مقدمًا */
+  upfront?: number;
+  /** المطلوب تحويله الآن لتأكيد الحجز */
+  dueNow?: number;
+  balanceDueHours?: number;
   bank: { bankName: string | null; accountHolder: string | null; iban: string | null; instructions: string | null } | null;
 }
+
+export type PaymentPlan = "FULL" | "DEPOSIT";
+export type DepositTiming = "WITH_FIRST_PAYMENT" | "BEFORE_CHECKIN";

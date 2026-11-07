@@ -27,7 +27,7 @@ async function holdBooking(client: PrismaClient | Prisma.TransactionClient, reso
       guestId: guest.id,
       startDate: fromIsoDate(dates[0]!),
       endDate: fromIsoDate(addDays(dates.at(-1)!, 1)),
-      totalAmount: 0,
+      totalAmount: 0, upfrontAmount: 0,
       priceBreakdown: [],
     },
   });
@@ -164,7 +164,7 @@ describe("database constraints", () => {
     const guest = await db.guest.create({ data: { name: "ضيف", phone: "966500000009" } });
     await expect(
       db.booking.create({
-        data: { reference: "T-1", guestId: guest.id, startDate: fromIsoDate(DAY), endDate: fromIsoDate(DAY), totalAmount: 0, priceBreakdown: [] },
+        data: { reference: "T-1", guestId: guest.id, startDate: fromIsoDate(DAY), endDate: fromIsoDate(DAY), totalAmount: 0, upfrontAmount: 0, priceBreakdown: [] },
       }),
     ).rejects.toThrow(/bookings_dates_valid/);
   });
@@ -174,7 +174,7 @@ describe("database constraints", () => {
     await expect(db.pricingRule.create({ data: { resourceId: full.id, kind: "WEEKDAY", price: -1 } })).rejects.toThrow(/pricing_rules_price_non_negative/);
     const guest = await db.guest.create({ data: { name: "ضيف", phone: "966500000008" } });
     const b = await db.booking.create({
-      data: { reference: "T-2", guestId: guest.id, startDate: fromIsoDate(DAY), endDate: fromIsoDate("2026-12-11"), totalAmount: 950, priceBreakdown: [] },
+      data: { reference: "T-2", guestId: guest.id, startDate: fromIsoDate(DAY), endDate: fromIsoDate("2026-12-11"), totalAmount: 950, upfrontAmount: 0, priceBreakdown: [] },
     });
     await expect(db.payment.create({ data: { bookingId: b.id, method: "BANK_TRANSFER", amount: 0 } })).rejects.toThrow(/payments_amount_positive/);
   });

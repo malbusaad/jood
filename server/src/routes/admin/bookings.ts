@@ -14,6 +14,7 @@ import {
   createBooking,
   evaluateSelection,
   expireStaleBookings,
+  recordRefund,
   recordVerifiedPayment,
   rejectPayment,
 } from "../../services/bookings.js";
@@ -23,7 +24,8 @@ import { currentDoorCode, issueDoorCode, revokeDoorCodes } from "../../services/
 import { notifyOwner } from "../../services/notifications.js";
 import type { LockClient } from "../../services/ttlock.js";
 import type { SecretBox } from "../../lib/secretBox.js";
-import { getSetting } from "../../settings/registry.js";
+import { getSetting, getSettings } from "../../settings/registry.js";
+import { paymentSummary } from "../../services/payments.js";
 import { requireRole } from "../../auth/session.js";
 import type { WhatsAppSender } from "../../services/notifications.js";
 
@@ -51,6 +53,11 @@ function presentGuest<G extends { nationalIdEnc: string | null; nationalIdLast4:
   };
 }
 
+function net(groups: { kind: string; _sum: { amount: Prisma.Decimal | null } }[]) {
+  const of = (k: string) => Number(groups.find((g) => g.kind === k)?._sum.amount ?? 0);
+  return of("PAYMENT") - of("REFUND");
+}
+
 /** Phone search that matches both local (05…) and international (9665…) forms. */
 function phoneFragment(q: string): string | null {
   const digits = q.replace(/\D/g, "").replace(/^0+/, "");
@@ -60,10 +67,10 @@ function phoneFragment(q: string): string | null {
 const listInclude = {
   guest: { select: { id: true, name: true, phone: true } },
   items: { select: { resource: { select: { id: true, name: true, kind: true } } }, distinct: ["resourceId"] },
-  payments: { select: { amount: true, status: true } },
+  payments: { select: { amount: true, status: true, purpose: true, kind: true } },
 } satisfies Prisma.BookingInclude;
 
-function summarize<T extends { payments: { amount: Prisma.Decimal; status: string }[]; items: { resource: { name: string } }[] }>(b: T) {
+function summarize<T extends { payments: { amount: Prisma.Decimal; status: string; purpose: string; kind: string }[]; items: { resource: { name: string } }[] }>(b: T) {
   const { payments, items, ...rest } = b;
   return {
     ...rest,
@@ -121,6 +128,8 @@ export function bookingsRouter(
       },
     });
     if (!b) throw new HttpError(404, "الحجز غير موجود");
+    const s = await getSettings(db, ["bookingPolicy", "stay"]);
+    const payment = paymentSummary(b, { checkIn: s.stay.checkIn, balanceDueHours: s.bookingPolicy.balanceDueHours });
     const history = await db.auditLog.findMany({
       where: { entityType: "booking", entityId: id },
       orderBy: { createdAt: "asc" },
@@ -132,7 +141,8 @@ export function bookingsRouter(
       // The clear-text door code is shown to the owner only.
       doorCode: req.user!.role === "OWNER" ? await currentDoorCode(db, opts.secretBox, b.id) : null,
       lockConfigured: Boolean(opts.lock),
-      paid: acceptedPaid(b.payments).toFixed(2),
+      paid: payment.bookingPaid,
+      payment,
       allowedTransitions: TRANSITIONS[b.status],
       statusLabel: STATUS_LABELS[b.status],
       history,
@@ -154,6 +164,10 @@ export function bookingsRouter(
         guestCount: z.number().int().min(1).max(500).nullable().optional(),
         adminNotes: z.string().trim().max(2000).nullable().optional(),
         channel: z.enum(["GATHERN", "MANUAL"]),
+        paymentPlan: z.enum(["FULL", "DEPOSIT"]).optional(),
+        depositTiming: z.enum(["WITH_FIRST_PAYMENT", "BEFORE_CHECKIN"]).optional(),
+        /** e.g. 0 when no security deposit is taken for a Gathern booking */
+        securityDeposit: z.number().min(0).max(100_000).multipleOf(0.01).nullable().optional(),
       }),
       req.body,
     );
@@ -167,6 +181,9 @@ export function bookingsRouter(
         guestCount: input.guestCount ?? null,
         adminNotes: input.adminNotes ?? null,
         channel: input.channel,
+        paymentPlan: input.paymentPlan,
+        depositTiming: input.depositTiming,
+        securityDeposit: input.securityDeposit ?? null,
       },
       { req, whatsapp: opts.whatsapp, secretBox: opts.secretBox },
     );
@@ -247,7 +264,8 @@ export function bookingsRouter(
     const { id } = parse(uuidParam, req.params);
     const input = parse(
       z.object({
-        method: z.enum(["BANK_TRANSFER", "GATHERN"]),
+        method: z.enum(["BANK_TRANSFER", "GATHERN", "CASH"]),
+        purpose: z.enum(["BOOKING", "SECURITY_DEPOSIT"]).default("BOOKING"),
         amount: z.number().positive().max(1_000_000).multipleOf(0.01),
         reportedAt: z.iso.datetime({ offset: true }).nullable().optional(),
         externalRef: z.string().trim().max(100).nullable().optional(),
@@ -256,6 +274,21 @@ export function bookingsRouter(
       req.body,
     );
     res.status(201).json(await recordVerifiedPayment(db, req, id, input));
+  });
+
+  /** Money returned to the guest. Recorded as a new entry; nothing is edited or deleted. Owner only. */
+  router.post("/:id/refunds", requireRole("OWNER"), async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    const input = parse(
+      z.object({
+        purpose: z.enum(["BOOKING", "SECURITY_DEPOSIT"]),
+        method: z.enum(["BANK_TRANSFER", "GATHERN", "CASH"]),
+        amount: z.number().positive().max(1_000_000).multipleOf(0.01),
+        note: z.string().trim().max(500).nullable().optional(),
+      }),
+      req.body,
+    );
+    res.status(201).json(await recordRefund(db, req, id, input));
   });
 
   router.post("/payments/:id/accept", async (req, res) => {
@@ -339,8 +372,9 @@ export function dashboardRouter(db: PrismaClient) {
         db.booking.count({ where: { status: "NEW" } }),
         db.booking.count({ where: { status: "AWAITING_VERIFICATION" } }),
         db.payment.count({ where: { status: "PENDING" } }),
-        db.payment.aggregate({ _sum: { amount: true }, where: { status: "ACCEPTED", verifiedAt: { gte: monthStart } } }),
-        db.payment.aggregate({ _sum: { amount: true }, where: { status: "ACCEPTED" } }),
+        // Revenue = booking money received minus booking refunds; security deposits are not income.
+        db.payment.groupBy({ by: ["kind"], _sum: { amount: true }, where: { status: "ACCEPTED", purpose: "BOOKING", verifiedAt: { gte: monthStart } } }),
+        db.payment.groupBy({ by: ["kind"], _sum: { amount: true }, where: { status: "ACCEPTED", purpose: "BOOKING" } }),
         db.booking.count({ where: { status: "CANCELLED", cancelledAt: { gte: monthStart } } }),
         db.amenity.findMany({ where: { available: false }, select: { id: true, name: true } }),
         db.notification.count({ where: { readAt: null } }),
@@ -357,8 +391,8 @@ export function dashboardRouter(db: PrismaClient) {
       newRequests,
       awaitingVerification,
       pendingPayments,
-      revenueMonth: (revenueMonth._sum.amount ?? 0).toString(),
-      revenueAll: (revenueAll._sum.amount ?? 0).toString(),
+      revenueMonth: net(revenueMonth).toString(),
+      revenueAll: net(revenueAll).toString(),
       cancelledMonth,
       unavailableAmenities,
       unreadNotifications: unread,

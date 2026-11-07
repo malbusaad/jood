@@ -44,6 +44,7 @@ export function mockApi({ site = siteFixture, booked = [], fail = false, options
         deposit: 500,
         payable: total + 500,
         endDate: body.startDate,
+        paymentOptions: { depositPlan: { percent: 50, upfront: total / 2 }, balanceDueHours: 24 },
       });
     }
     if (url.pathname === "/api/public/bookings" && booking) return json(booking.body, booking.status);

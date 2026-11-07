@@ -247,6 +247,16 @@ model Booking {
   contractAcceptedAt DateTime?      @map("contract_accepted_at")
   /// عدد مرات تعديل الموعد (مسموح مرة واحدة)
   rescheduleCount    Int            @default(0) @map("reschedule_count")
+  /// طريقة السداد التي اختارها الضيف: كامل المبلغ مقدمًا أو عربون
+  paymentPlan        PaymentPlan    @default(FULL) @map("payment_plan")
+  /// مبلغ الحجز المطلوب مقدمًا لتأكيد الحجز (كامل المبلغ أو العربون) — محفوظ وقت الطلب
+  upfrontAmount      Decimal        @map("upfront_amount") @db.Decimal(10, 2)
+  /// متى يُدفع التأمين: مع الدفعة الأولى أو قبل الدخول
+  depositTiming      DepositTiming  @default(WITH_FIRST_PAYMENT) @map("deposit_timing")
+  /// حجوزات ما قبل نظام العربون والتأمين: تبقى على القواعد السابقة
+  legacyPayment      Boolean        @default(false) @map("legacy_payment")
+  /// وقت تنبيه المالك بعدم اكتمال السداد قبل الدخول (مرة واحدة)
+  balanceAlertAt     DateTime?      @map("balance_alert_at")
   /// مبلغ الخصم من كود الخصم (مبلغ الحجز totalAmount بعد الخصم)
   discountAmount     Decimal        @default(0) @map("discount_amount") @db.Decimal(10, 2)
   /// نسخة من كود الخصم المستخدم وقت الحجز
@@ -314,6 +324,27 @@ model BookingLock {
 enum PaymentMethod {
   BANK_TRANSFER
   GATHERN
+  CASH
+}
+
+enum PaymentPlan {
+  FULL // كامل المبلغ مقدمًا
+  DEPOSIT // عربون (نسبة من مبلغ الحجز) والباقي قبل الدخول
+}
+
+enum DepositTiming {
+  WITH_FIRST_PAYMENT // التأمين مع الدفعة الأولى
+  BEFORE_CHECKIN // التأمين قبل الدخول
+}
+
+enum PaymentPurpose {
+  BOOKING // مبلغ الحجز
+  SECURITY_DEPOSIT // التأمين المسترد
+}
+
+enum PaymentKind {
+  PAYMENT // مبلغ مستلم
+  REFUND // مبلغ مُعاد للضيف
 }
 
 enum PaymentStatus {
@@ -323,21 +354,25 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id           String        @id @default(uuid()) @db.Uuid
-  bookingId    String        @map("booking_id") @db.Uuid
+  id           String         @id @default(uuid()) @db.Uuid
+  bookingId    String         @map("booking_id") @db.Uuid
   method       PaymentMethod
-  amount       Decimal       @db.Decimal(10, 2)
-  status       PaymentStatus @default(PENDING)
+  /// لأي غرض: مبلغ الحجز أو التأمين
+  purpose      PaymentPurpose @default(BOOKING)
+  /// دفعة أو استرداد — لا يُحذف أي سجل مالي
+  kind         PaymentKind    @default(PAYMENT)
+  amount       Decimal        @db.Decimal(10, 2)
+  status       PaymentStatus  @default(PENDING)
   /// تاريخ التحويل كما أبلغ عنه الضيف
-  reportedAt   DateTime?     @map("reported_at")
-  proofAssetId String?       @unique @map("proof_asset_id") @db.Uuid
+  reportedAt   DateTime?      @map("reported_at")
+  proofAssetId String?        @unique @map("proof_asset_id") @db.Uuid
   /// مرجع خارجي (مثل رقم الحجز في جاذر إن) — يُسجَّل يدويًا
-  externalRef  String?       @map("external_ref") @db.VarChar(100)
+  externalRef  String?        @map("external_ref") @db.VarChar(100)
   note         String?
-  verifiedAt   DateTime?     @map("verified_at")
-  verifiedById String?       @map("verified_by_id") @db.Uuid
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  verifiedAt   DateTime?      @map("verified_at")
+  verifiedById String?        @map("verified_by_id") @db.Uuid
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
 
   booking    Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   proof      MediaAsset? @relation(fields: [proofAssetId], references: [id], onDelete: SetNull)
@@ -409,6 +444,7 @@ model MediaAsset {
 enum NotificationType {
   NEW_BOOKING
   PAYMENT_REPORTED
+  PAYMENT_DUE
   BOOKING_CANCELLED
   SYSTEM
 }

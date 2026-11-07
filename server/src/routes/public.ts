@@ -12,6 +12,7 @@ import { createBooking, evaluateSelection, expireStaleBookings } from "../servic
 import type { WhatsAppSender } from "../services/notifications.js";
 import { logoVersion, readLogo } from "../services/licenseLogo.js";
 import { computeDiscount, discountCodeSchema, findCode } from "../services/discounts.js";
+import { upfrontFor } from "../services/payments.js";
 import { Prisma } from "@prisma/client";
 
 const rangeSchema = z
@@ -36,6 +37,8 @@ const bookingSchema = selectionSchema.extend({
   /** Honeypot: real visitors never see or fill this field. */
   website: z.string().max(0).optional(),
   discountCode: z.union([z.literal(""), discountCodeSchema]).nullable().optional(),
+  paymentPlan: z.enum(["FULL", "DEPOSIT"]).default("FULL"),
+  depositTiming: z.enum(["WITH_FIRST_PAYMENT", "BEFORE_CHECKIN"]).default("WITH_FIRST_PAYMENT"),
 });
 
 /** Public catalog API. Returns only public settings — never bank details, codes or guest data. */
@@ -194,7 +197,23 @@ export function publicRouter(
         }
       }
       const total = discount ? subtotal - discount.amount : subtotal;
-      res.json({ available: true, lines: ev.quote.lines, subtotal, discount, discountError, total, deposit: ev.deposit, payable: total + ev.deposit, endDate: ev.endDate });
+      // Payment options shown to the guest: the up-front booking part of each plan (deposit is separate).
+      const policy = await getSetting(db, "bookingPolicy");
+      const depositPlan = policy.allowDepositPlan
+        ? { percent: policy.depositPercent, upfront: Number(upfrontFor("DEPOSIT", total, policy.depositPercent)) }
+        : null;
+      res.json({
+        available: true,
+        lines: ev.quote.lines,
+        subtotal,
+        discount,
+        discountError,
+        total,
+        deposit: ev.deposit,
+        payable: total + ev.deposit,
+        endDate: ev.endDate,
+        paymentOptions: { depositPlan, balanceDueHours: policy.balanceDueHours },
+      });
     } catch (err) {
       if (err instanceof HttpError && err.status < 500) return void res.json({ available: false, reason: err.message });
       throw err;
@@ -223,6 +242,8 @@ export function publicRouter(
         guestNotes: input.notes ?? null,
         channel: "WEBSITE",
         discountCode: input.discountCode || null,
+        paymentPlan: input.paymentPlan,
+        depositTiming: input.depositTiming,
       },
       { whatsapp: opts.whatsapp, secretBox: opts.secretBox },
     );
@@ -242,6 +263,12 @@ export function publicRouter(
       total,
       deposit,
       payable: total + deposit,
+      paymentPlan: booking.paymentPlan,
+      depositTiming: booking.depositTiming,
+      upfront: Number(booking.upfrontAmount),
+      // What to transfer now to confirm: the up-front booking part (+ the deposit if chosen with it).
+      dueNow: Number(booking.upfrontAmount) + (booking.depositTiming === "WITH_FIRST_PAYMENT" ? deposit : 0),
+      balanceDueHours: (await getSetting(db, "bookingPolicy")).balanceDueHours,
       bank: bank.iban ? bank : null,
     });
   });

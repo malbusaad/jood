@@ -102,6 +102,20 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
         ["مبلغ الحجز", formatSAR(total)],
         ["مبلغ التأمين (مسترد)", formatSAR(deposit)],
         ["الإجمالي المستحق", formatSAR(total + deposit)],
+        ...(booking.legacyPayment
+          ? []
+          : ([
+              [
+                "طريقة السداد",
+                booking.paymentPlan === "FULL"
+                  ? "كامل مبلغ الحجز مقدمًا"
+                  : `عربون ${formatSAR(Number(booking.upfrontAmount))} مقدمًا، والباقي ${formatSAR(total - Number(booking.upfrontAmount))} قبل موعد الدخول بـ ${s.bookingPolicy.balanceDueHours} ساعة`,
+              ],
+              [
+                "سداد التأمين",
+                deposit === 0 ? "لا يوجد" : booking.depositTiming === "WITH_FIRST_PAYMENT" ? "مع الدفعة الأولى" : `قبل موعد الدخول بـ ${s.bookingPolicy.balanceDueHours} ساعة`,
+              ],
+            ] as [string, string][])),
       ],
     },
     {

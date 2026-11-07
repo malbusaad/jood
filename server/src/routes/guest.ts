@@ -7,6 +7,7 @@ import { hashToken } from "../lib/tokens.js";
 import { todayInRiyadh, toIsoDate } from "../lib/dates.js";
 import { getSettings } from "../settings/registry.js";
 import { currentDoorCode } from "../services/doorCodes.js";
+import { paymentSummary } from "../services/payments.js";
 import type { SecretBox } from "../lib/secretBox.js";
 
 const tokenParam = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{40,60}$/) });
@@ -40,6 +41,7 @@ export function guestRouter(db: PrismaClient, opts: { secretBox: SecretBox }) {
       include: {
         booking: {
           include: {
+            payments: { select: { purpose: true, kind: true, status: true, amount: true } },
             guest: { select: { name: true } },
             items: { select: { resource: { select: { id: true, name: true } } } },
           },
@@ -53,9 +55,12 @@ export function guestRouter(db: PrismaClient, opts: { secretBox: SecretBox }) {
     }
     await db.guestAccessToken.update({ where: { id: access.id }, data: { lastUsedAt: new Date() } });
 
-    const s = await getSettings(db, ["general", "stay", "houseRules", "contact", "guestPortal"]);
+    const s = await getSettings(db, ["general", "stay", "houseRules", "contact", "guestPortal", "bookingPolicy"]);
     const start = toIsoDate(b.startDate);
-    const showCodes = s.guestPortal.showCodesFrom === "IMMEDIATELY" || todayInRiyadh() >= start;
+    // Entry codes are released only when the whole booking amount and the deposit are verified.
+    const pay = paymentSummary(b, { checkIn: s.stay.checkIn, balanceDueHours: s.bookingPolicy.balanceDueHours });
+    const timeOk = s.guestPortal.showCodesFrom === "IMMEDIATELY" || todayInRiyadh() >= start;
+    const showCodes = timeOk && pay.fullySettled;
     // A booking's own TTLock code takes the place of the fixed entry code.
     const doorCode = showCodes ? await currentDoorCode(db, opts.secretBox, b.id) : null;
 
@@ -75,7 +80,11 @@ export function guestRouter(db: PrismaClient, opts: { secretBox: SecretBox }) {
       codes: showCodes
         ? { entryCode: doorCode ?? s.guestPortal.entryCode, wifiName: s.guestPortal.wifiName, wifiPassword: s.guestPortal.wifiPassword }
         : null,
-      codesAvailableOn: showCodes ? null : start,
+      codesAvailableOn: timeOk ? null : start,
+      // When money is still owed, the guest sees what is left instead of the codes.
+      paymentPending: pay.fullySettled
+        ? null
+        : { bookingRemaining: Number(pay.bookingRemaining), depositRemaining: Number(pay.depositRemaining), dueBy: pay.balanceDueAt },
       expiresAt: access.expiresAt,
     });
   });

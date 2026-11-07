@@ -4,7 +4,7 @@ import { CalendarDays, Check, KeyRound, LogOut, MapPin, MessageCircle, Phone, Wi
 import { api, ApiError } from "../api/client";
 import Pattern from "../components/Pattern";
 import CopyButton from "../components/CopyButton";
-import { formatDateAr, formatTimeAr } from "../lib/format";
+import { formatDateAr, formatSAR, formatTimeAr } from "../lib/format";
 
 interface Portal {
   siteName: string;
@@ -21,6 +21,8 @@ interface Portal {
   location: { district: string; city: string; country: string };
   codes: { entryCode: string | null; wifiName: string | null; wifiPassword: string | null } | null;
   codesAvailableOn: string | null;
+  /** Money still owed: codes stay hidden until it is paid and verified. */
+  paymentPending?: { bookingRemaining: number; depositRemaining: number; dueBy: string | null } | null;
 }
 
 function Section({ title, Icon, children }: { title: string; Icon: typeof KeyRound; children: React.ReactNode }) {
@@ -98,7 +100,16 @@ export default function GuestPortalPage() {
         </Section>
 
         <Section title="الدخول والواي فاي" Icon={KeyRound}>
-          {p.codes === null ? (
+          {p.codes === null && p.paymentPending ? (
+            <div className="text-sm leading-7 text-jood-ink/75">
+              <p>يظهر رمز الدخول وبيانات الواي فاي هنا بعد اكتمال السداد والتحقق منه:</p>
+              <ul className="mt-2 list-inside list-disc">
+                {p.paymentPending.bookingRemaining > 0 && <li>المتبقي من مبلغ الحجز: {formatSAR(p.paymentPending.bookingRemaining)}</li>}
+                {p.paymentPending.depositRemaining > 0 && <li>مبلغ التأمين (يُسترد بعد المغادرة): {formatSAR(p.paymentPending.depositRemaining)}</li>}
+              </ul>
+              <p className="mt-2">تواصل معنا عبر واتساب بعد التحويل.</p>
+            </div>
+          ) : p.codes === null ? (
             <p className="text-sm leading-7 text-jood-ink/75">يظهر رمز الدخول وبيانات الواي فاي هنا يوم وصولك، {formatDateAr(p.codesAvailableOn!)}.</p>
           ) : !hasCodes ? (
             <p className="text-sm leading-7 text-jood-ink/75">سنرسل لك تفاصيل الدخول قبل موعدك.</p>

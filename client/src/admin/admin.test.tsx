@@ -118,7 +118,7 @@ describe("booking detail", () => {
     mockAdminApi({ "GET /api/admin/bookings/b1": () => [200, booking()] }, OWNER);
     renderAt("/admin/bookings/b1");
     expect(await screen.findByRole("button", { name: "تأكيد الحجز" })).toBeDisabled();
-    expect(screen.getByText(/للتأكيد: سجّل دفعة متحقق منها/)).toBeInTheDocument();
+    expect(screen.getByText(/للتأكيد: سجّل دفعات متحقق منها/)).toBeInTheDocument();
   });
 
   it("records a verified payment and moves the booking along", async () => {
@@ -415,5 +415,51 @@ describe("special prices and seasons", () => {
     fireEvent.click(screen.getByRole("button", { name: "حفظ" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     expect(calls.find((c) => c.method === "POST")!.body).toEqual({ resourceIds: ["full"], label: "عيد الفطر", dates: ["2027-03-09", "2027-03-10"], price: 1800, priority: 0 });
+  });
+});
+
+describe("booking payments: deposit plan, security deposit and refunds", () => {
+  const summary = {
+    plan: "DEPOSIT", depositTiming: "BEFORE_CHECKIN", legacy: false, bookingTotal: "1200.00", upfrontAmount: "600.00",
+    bookingPaid: "600.00", bookingRefunded: "0.00", bookingRemaining: "600.00", upfrontRemaining: "0.00",
+    securityDeposit: "500.00", depositPaid: "0.00", depositRefunded: "0.00", depositRemaining: "500.00", depositStatus: "UNPAID",
+    dueToConfirm: "0.00", canConfirm: true, fullySettled: false, balanceDueAt: "2026-12-09T11:00:00.000Z",
+  } as const;
+
+  it("shows what is paid and owed for the booking and the deposit, and that the door code is held back", async () => {
+    mockAdminApi({ "GET /api/admin/bookings/b1": () => [200, booking({ paid: "600.00", payment: { ...summary } })] }, OWNER);
+    renderAt("/admin/bookings/b1");
+    const box = await screen.findByLabelText("حالة السداد");
+    expect(within(box).getByText("عربون والباقي قبل الدخول")).toBeInTheDocument();
+    expect(within(box).getByText("التأمين (قبل الدخول)")).toBeInTheDocument();
+    expect(within(box).getByText("غير مدفوع")).toBeInTheDocument();
+    expect(within(box).getByText("مخفي حتى اكتمال السداد")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "تأكيد الحجز" })).toBeEnabled();
+  });
+
+  it("records a security deposit payment in cash, and a refund as a new entry", async () => {
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/bookings/b1": () => [200, booking({ paid: "600.00", payment: { ...summary, depositPaid: "500.00", depositRemaining: "0.00", depositStatus: "PAID" } })],
+        "POST /api/admin/bookings/b1/payments": () => [201, {}],
+        "POST /api/admin/bookings/b1/refunds": () => [201, {}],
+      },
+      OWNER,
+    );
+    vi.stubGlobal("confirm", () => true);
+    renderAt("/admin/bookings/b1");
+    fireEvent.change(await screen.findByLabelText("عن"), { target: { value: "SECURITY_DEPOSIT" } });
+    fireEvent.change(screen.getByLabelText("الطريقة"), { target: { value: "CASH" } });
+    fireEvent.change(screen.getByLabelText("المبلغ (ريال)"), { target: { value: "500" } });
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفعة" }));
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith("/payments"))).toBe(true));
+    expect(calls.find((c) => c.path.endsWith("/payments"))!.body).toMatchObject({ purpose: "SECURITY_DEPOSIT", method: "CASH", amount: 500 });
+
+    fireEvent.click(await screen.findByRole("button", { name: "تسجيل استرداد للضيف" }));
+    fireEvent.change(screen.getByLabelText("المبلغ المُعاد (ريال)"), { target: { value: "450" } });
+    fireEvent.change(screen.getByLabelText("ملاحظة (مثل: خصم أضرار)"), { target: { value: "خصم 50 لكسر كأس" } });
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل الاسترداد" }));
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith("/refunds"))).toBe(true));
+    expect(calls.find((c) => c.path.endsWith("/refunds"))!.body).toEqual({ purpose: "SECURITY_DEPOSIT", method: "BANK_TRANSFER", amount: 450, note: "خصم 50 لكسر كأس" });
   });
 });

@@ -55,6 +55,7 @@ async function setup(lock: LockClient | null, start = nextSunday()) {
   const r = await request(app).post("/api/public/bookings").send({ resourceIds: [full.id], startDate: start, nights: 1, name: "سارة محمد القحطاني", nationalId: "1023456789", phone: "0500000001", acceptTerms: true });
   const booking = await db.booking.findUniqueOrThrow({ where: { reference: r.body.reference } });
   await agent.post(`/api/admin/bookings/${booking.id}/payments`).send({ method: "BANK_TRANSFER", amount: Number(booking.totalAmount) }).expect(201);
+  await agent.post(`/api/admin/bookings/${booking.id}/payments`).send({ method: "BANK_TRANSFER", purpose: "SECURITY_DEPOSIT", amount: 500 }).expect(201);
   return { app, agent, booking, start };
 }
 
