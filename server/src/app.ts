@@ -81,6 +81,7 @@ export function createApp({
   app.use(compression());
   // The tourism-licence logo upload is the only larger JSON body (base64 image, max 512 KB).
   app.use("/api/admin/license-logo", express.json({ limit: "800kb" }));
+  app.use("/api/admin/site-images", express.json({ limit: "800kb" }));
   app.use(express.json({ limit: "100kb" }));
   app.use(cookieParser());
 

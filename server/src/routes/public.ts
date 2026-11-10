@@ -10,7 +10,7 @@ import { resolveRule } from "../services/pricing.js";
 import { blockedResources } from "../services/conflicts.js";
 import { createBooking, evaluateSelection, expireStaleBookings } from "../services/bookings.js";
 import type { WhatsAppSender } from "../services/notifications.js";
-import { logoVersion, readLogo } from "../services/licenseLogo.js";
+import { SITE_IMAGES, isSiteImageSlot, logoVersion, readLogo } from "../services/licenseLogo.js";
 import { computeDiscount, discountCodeSchema, findCode } from "../services/discounts.js";
 import { upfrontFor } from "../services/payments.js";
 import { Prisma } from "@prisma/client";
@@ -49,7 +49,7 @@ export function publicRouter(
   const router = Router();
 
   router.get("/site", async (_req, res) => {
-    const [settings, amenities, fullResource, media, licenseLogo] = await Promise.all([
+    const [settings, amenities, fullResource, media, licenseLogo, siteLogo, siteIcon] = await Promise.all([
       getSettings(db, publicSettingKeys),
       db.amenity.findMany({
         where: { visible: true },
@@ -66,6 +66,8 @@ export function publicRouter(
         select: { id: true, kind: true, storageKey: true, alt: true, amenityId: true, isHero: true },
       }),
       logoVersion(db),
+      logoVersion(db, SITE_IMAGES.logo.key),
+      logoVersion(db, SITE_IMAGES.icon.key),
     ]);
 
     // Base weekday price of the full rest house: index 0 = Sunday ... 6 = Saturday (null = no approved price).
@@ -83,7 +85,12 @@ export function publicRouter(
       amenities,
       weekdayPrices,
       media: {
-        logoUrl: media.find((m) => m.kind === "LOGO") ? mediaUrl(media.find((m) => m.kind === "LOGO")!.storageKey) : null,
+        logoUrl: siteLogo
+          ? `/api/public/site-images/logo?v=${siteLogo}`
+          : media.find((m) => m.kind === "LOGO")
+            ? mediaUrl(media.find((m) => m.kind === "LOGO")!.storageKey)
+            : null,
+        iconUrl: siteIcon ? `/api/public/site-images/icon?v=${siteIcon}` : null,
         heroImageUrl: (() => {
           const hero = media.find((m) => m.kind === "IMAGE" && m.isHero);
           return hero ? mediaUrl(hero.storageKey) : null;
@@ -94,6 +101,18 @@ export function publicRouter(
           .map((m) => ({ url: mediaUrl(m.storageKey), alt: m.alt ?? "", amenityId: m.amenityId })),
       },
     });
+  });
+
+  /** Site logo / icon uploaded by the owner. */
+  router.get("/site-images/:slot", async (req, res) => {
+    const slot = String(req.params.slot);
+    if (!isSiteImageSlot(slot)) throw new HttpError(404, "غير موجود");
+    const img = await readLogo(db, SITE_IMAGES[slot].key);
+    if (!img) throw new HttpError(404, "لا توجد صورة");
+    res.set("Content-Type", img.mime);
+    res.set("Cache-Control", "public, max-age=86400");
+    res.set("Content-Security-Policy", "default-src 'none'");
+    res.send(img.bytes);
   });
 
   /** The Ministry of Tourism logo uploaded by the owner (raster image, served from the database). */

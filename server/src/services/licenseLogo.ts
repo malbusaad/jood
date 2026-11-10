@@ -8,6 +8,15 @@ import { HttpError } from "../lib/http.js";
  * with the settings JSON; it is served on its own URL.
  */
 export const LOGO_KEY = "tourismLicenseLogo";
+
+/** Images the owner uploads from the admin panel, each stored under its own key. */
+export const SITE_IMAGES = {
+  license: { key: LOGO_KEY, label: "شعار وزارة السياحة" },
+  logo: { key: "siteLogo", label: "شعار الموقع" },
+  icon: { key: "siteIcon", label: "أيقونة الموقع" },
+} as const;
+export type SiteImageSlot = keyof typeof SITE_IMAGES;
+export const isSiteImageSlot = (s: string): s is SiteImageSlot => Object.hasOwn(SITE_IMAGES, s);
 export const MAX_LOGO_BYTES = 512 * 1024;
 
 interface StoredLogo {
@@ -25,36 +34,36 @@ export function detectImageType(buf: Buffer): string | null {
   return null;
 }
 
-export async function saveLogo(db: PrismaClient, base64: string) {
+export async function saveLogo(db: PrismaClient, base64: string, key: string = LOGO_KEY) {
   const clean = base64.replace(/^data:[^,]*,/, "").replace(/\s/g, "");
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(clean)) throw new HttpError(400, "ملف الشعار غير صالح");
   const buf = Buffer.from(clean, "base64");
   if (buf.length === 0) throw new HttpError(400, "ملف الشعار فارغ");
-  if (buf.length > MAX_LOGO_BYTES) throw new HttpError(413, "حجم الشعار أكبر من 512 كيلوبايت");
+  if (buf.length > MAX_LOGO_BYTES) throw new HttpError(413, "حجم الصورة أكبر من 512 كيلوبايت");
   const mime = detectImageType(buf);
-  if (!mime) throw new HttpError(400, "الشعار يجب أن يكون صورة PNG أو JPG أو WebP");
+  if (!mime) throw new HttpError(400, "الصورة يجب أن تكون PNG أو JPG أو WebP");
   const value: StoredLogo = { mime, data: buf.toString("base64"), sha256: createHash("sha256").update(buf).digest("hex"), size: buf.length };
   await db.siteSetting.upsert({
-    where: { key: LOGO_KEY },
-    create: { key: LOGO_KEY, value: value as unknown as Prisma.InputJsonValue },
+    where: { key },
+    create: { key, value: value as unknown as Prisma.InputJsonValue },
     update: { value: value as unknown as Prisma.InputJsonValue },
   });
   return { version: value.sha256.slice(0, 16), size: value.size, mime };
 }
 
-export async function readLogo(db: PrismaClient): Promise<{ mime: string; bytes: Buffer; version: string } | null> {
-  const row = await db.siteSetting.findUnique({ where: { key: LOGO_KEY } });
+export async function readLogo(db: PrismaClient, key: string = LOGO_KEY): Promise<{ mime: string; bytes: Buffer; version: string } | null> {
+  const row = await db.siteSetting.findUnique({ where: { key } });
   const v = row?.value as StoredLogo | undefined;
   if (!v?.data) return null;
   return { mime: v.mime, bytes: Buffer.from(v.data, "base64"), version: v.sha256.slice(0, 16) };
 }
 
 /** Version only (for cache-busting URLs), without loading the image itself. */
-export async function logoVersion(db: PrismaClient): Promise<string | null> {
-  const rows = await db.$queryRaw<{ v: string | null }[]>`SELECT value->>'sha256' AS v FROM site_settings WHERE key = ${LOGO_KEY}`;
+export async function logoVersion(db: PrismaClient, key: string = LOGO_KEY): Promise<string | null> {
+  const rows = await db.$queryRaw<{ v: string | null }[]>`SELECT value->>'sha256' AS v FROM site_settings WHERE key = ${key}`;
   return rows[0]?.v ? rows[0].v.slice(0, 16) : null;
 }
 
-export async function deleteLogo(db: PrismaClient) {
-  await db.siteSetting.deleteMany({ where: { key: LOGO_KEY } });
+export async function deleteLogo(db: PrismaClient, key: string = LOGO_KEY) {
+  await db.siteSetting.deleteMany({ where: { key } });
 }

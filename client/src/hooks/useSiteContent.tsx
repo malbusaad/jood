@@ -13,7 +13,10 @@ export function SiteContentProvider({ children }: { children: ReactNode }) {
   const load = useCallback(() => {
     setState({ status: "loading" });
     api<SiteContent>("/api/public/site")
-      .then((site) => setState({ status: "ready", site }))
+      .then((site) => {
+        setState({ status: "ready", site });
+        applySiteIcon(site.media.iconUrl ?? null);
+      })
       .catch(() => setState({ status: "error", retry: load }));
   }, []);
 
@@ -31,4 +34,19 @@ export function useSiteContent(): SiteContent {
   const state = useContext(SiteContext);
   if (state.status !== "ready") throw new Error("useSiteContent used before content loaded");
   return state.site;
+}
+
+/** Uses the owner's uploaded icon for the browser tab and the phone home screen (default icon otherwise). */
+function applySiteIcon(url: string | null) {
+  if (!url || typeof document === "undefined") return;
+  for (const rel of ["icon", "apple-touch-icon"]) {
+    let link = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = rel;
+      document.head.appendChild(link);
+    }
+    link.href = url;
+    link.removeAttribute("type");
+  }
 }

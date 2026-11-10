@@ -57,6 +57,14 @@ describe("home page", () => {
     expect(within(band).getByRole("img", { name: "شعار وزارة السياحة" })).toHaveAttribute("src", "/api/public/license-logo?v=abc");
   });
 
+  it("shows the uploaded logo and uses the uploaded icon for the browser tab", async () => {
+    renderApp("/", { site: { ...siteFixture, media: { ...siteFixture.media, logoUrl: "/api/public/site-images/logo?v=1", iconUrl: "/api/public/site-images/icon?v=2" } } });
+    await screen.findByRole("heading", { level: 1 });
+    expect(document.querySelector("header img")).toHaveAttribute("src", "/api/public/site-images/logo?v=1");
+    expect(document.head.querySelector('link[rel="icon"]')).toHaveAttribute("href", "/api/public/site-images/icon?v=2");
+    expect(document.head.querySelector('link[rel="apple-touch-icon"]')).toHaveAttribute("href", "/api/public/site-images/icon?v=2");
+  });
+
   it("shows check-in and check-out times from settings", async () => {
     renderApp("/");
     await screen.findByRole("heading", { level: 1 });

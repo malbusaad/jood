@@ -99,38 +99,68 @@ export function TickerEditor({ initial, canEdit }: { initial: TickerValue; canEd
 
 /** Upload of the official Ministry of Tourism logo supplied by the owner. */
 export function LicenseLogoCard({ canEdit }: { canEdit: boolean }) {
+  return (
+    <ImageUploadCard
+      canEdit={canEdit}
+      title="شعار وزارة السياحة"
+      intro="ارفع الشعار الرسمي الذي لديك (PNG أو JPG أو WebP، حتى 512 كيلوبايت). لا يُستخدم أي شعار بديل؛ إن لم يُرفع تظهر علامة توثيق بسيطة."
+      endpoint="/api/admin/license-logo"
+      alt="شعار وزارة السياحة الحالي"
+      noun="الشعار"
+    />
+  );
+}
+
+/** One owner-uploaded image (stored in the database, survives deploys). */
+export function ImageUploadCard({
+  canEdit,
+  title,
+  intro,
+  endpoint,
+  alt,
+  noun,
+  square,
+}: {
+  canEdit: boolean;
+  title: string;
+  intro: string;
+  endpoint: string;
+  alt: string;
+  noun: string;
+  square?: boolean;
+}) {
   const [tick, setTick] = useState(0);
-  const { data } = useApi<{ url: string | null }>(`/api/admin/license-logo?t=${tick}`);
+  const { data } = useApi<{ url: string | null }>(`${endpoint}?t=${tick}`);
   const m = useMutation();
   const [localError, setLocalError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function upload(file: File) {
     setLocalError(null);
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) return setLocalError("الشعار يجب أن يكون صورة PNG أو JPG أو WebP");
-    if (file.size > 512 * 1024) return setLocalError("حجم الشعار أكبر من 512 كيلوبايت");
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) return setLocalError("الصورة يجب أن تكون PNG أو JPG أو WebP");
+    if (file.size > 512 * 1024) return setLocalError("حجم الصورة أكبر من 512 كيلوبايت");
     const data = await new Promise<string>((resolve, reject) => {
       const r = new FileReader();
       r.onload = () => resolve(String(r.result));
       r.onerror = () => reject(r.error);
       r.readAsDataURL(file);
     });
-    if (await m.run("/api/admin/license-logo", "PUT", { data })) setTick((t) => t + 1);
+    if (await m.run(endpoint, "PUT", { data })) setTick((t) => t + 1);
   }
 
   return (
-    <Card title="شعار وزارة السياحة">
-      <p className="-mt-2 mb-4 text-sm text-jood-ink/60">ارفع الشعار الرسمي الذي لديك (PNG أو JPG أو WebP، حتى 512 كيلوبايت). لا يُستخدم أي شعار بديل؛ إن لم يُرفع تظهر علامة توثيق بسيطة.</p>
+    <Card title={title}>
+      <p className="-mt-2 mb-4 text-sm text-jood-ink/60">{intro}</p>
       <div className="flex flex-wrap items-center gap-4">
-        <div className="flex h-20 w-40 items-center justify-center rounded-xl border border-dashed border-jood-green/20 bg-white">
-          {data?.url ? <img src={data.url} alt="شعار وزارة السياحة الحالي" className="max-h-16 max-w-36 object-contain" /> : <span className="text-xs text-jood-ink/50">لم يُرفع بعد</span>}
+        <div className={`flex items-center justify-center rounded-xl border border-dashed border-jood-green/20 bg-white ${square ? "size-20" : "h-20 w-40"}`}>
+          {data?.url ? <img src={data.url} alt={alt} className={square ? "size-16 object-contain" : "max-h-16 max-w-36 object-contain"} /> : <span className="text-xs text-jood-ink/50">لم يُرفع بعد</span>}
         </div>
         {canEdit && (
           <div className="flex flex-wrap gap-2">
-            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="ملف الشعار" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void upload(f); }} />
-            <Button variant="secondary" busy={m.busy} onClick={() => fileRef.current?.click()}><Upload className="size-4" /> {data?.url ? "استبدال الشعار" : "رفع الشعار"}</Button>
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label={`ملف ${noun}`} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void upload(f); }} />
+            <Button variant="secondary" busy={m.busy} onClick={() => fileRef.current?.click()}><Upload className="size-4" /> {data?.url ? `استبدال ${noun}` : `رفع ${noun}`}</Button>
             {data?.url && (
-              <Button variant="ghost" onClick={async () => { if (await m.run("/api/admin/license-logo", "DELETE")) setTick((t) => t + 1); }}><Trash2 className="size-4" /> حذف</Button>
+              <Button variant="ghost" onClick={async () => { if (await m.run(endpoint, "DELETE")) setTick((t) => t + 1); }}><Trash2 className="size-4" /> حذف</Button>
             )}
           </div>
         )}
