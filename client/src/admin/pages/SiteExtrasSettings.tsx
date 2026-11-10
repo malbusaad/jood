@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2, Upload } from "lucide-react";
 import { Button, Card, ErrorNote, Field, inputClass, useApi, useMutation } from "../ui";
 
@@ -17,7 +17,12 @@ export function TickerEditor({ initial, canEdit }: { initial: TickerValue; canEd
   const [v, setV] = useState(initial);
   const [saved, setSaved] = useState(false);
   const m = useMutation();
-  useEffect(() => setV(initial), [initial]);
+  // Follow new data from the server without wiping what was just typed (no delayed reset after the first render).
+  const [seen, setSeen] = useState(initial);
+  if (seen !== initial) {
+    setSeen(initial);
+    setV(initial);
+  }
 
   const update = (i: number, patch: Partial<TickerValue["items"][number]>) => setV({ ...v, items: v.items.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
   const move = (i: number, d: -1 | 1) => {

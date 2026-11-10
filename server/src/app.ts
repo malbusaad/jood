@@ -15,6 +15,9 @@ import { loadSession, requireSameOrigin } from "./auth/session.js";
 import { HttpError } from "./lib/http.js";
 import type { WhatsAppConfig, WhatsAppSender, WhatsAppTemplateSender } from "./services/notifications.js";
 import type { LockClient } from "./services/ttlock.js";
+import { enablePushNotifications } from "./services/notifications.js";
+import type { PushSend } from "./services/push.js";
+import { logoVersion, SITE_IMAGES } from "./services/licenseLogo.js";
 import { makeSecretBox, type SecretBox } from "./lib/secretBox.js";
 
 export interface AppOptions {
@@ -38,6 +41,8 @@ export interface AppOptions {
   /** WhatsApp Cloud API settings (connection check) and template sender for guest messages. */
   waConfig?: WhatsAppConfig | null;
   waSend?: WhatsAppTemplateSender | null;
+  /** Phone/browser notifications for admins (Web Push); null to turn off. */
+  push?: { send: PushSend; subject: string } | null;
   /** Public site address, used to build guest portal links. */
   publicBaseUrl?: string;
   /** TTLock client for door codes; null when not configured. */
@@ -58,11 +63,13 @@ export function createApp({
   whatsapp = null,
   waConfig = null,
   waSend = null,
+  push = null,
   publicBaseUrl = "http://localhost:5173",
   lock = null,
   secretBox = makeSecretBox("development-only-secret-not-for-production", "door-codes"),
 }: AppOptions) {
   const app = express();
+  if (push) enablePushNotifications({ db, box: secretBox, ...push });
 
   // Render terminates TLS at its proxy; trust it so req.ip / rate limiting use the real client IP.
   app.set("trust proxy", 1);
@@ -112,10 +119,42 @@ export function createApp({
     res.set("Cache-Control", "no-store");
     next();
   });
-  app.use("/api/admin", adminRouter(db, { whatsapp, publicBaseUrl, lock, secretBox, waConfig, waSend }));
+  app.use("/api/admin", adminRouter(db, { whatsapp, publicBaseUrl, lock, secretBox, waConfig, waSend, push }));
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "المسار غير موجود" });
+  });
+
+  // The service worker must always be fresh (it delivers the phone notifications).
+  app.get("/sw.js", (_req, res, next) => {
+    res.set("Cache-Control", "no-cache");
+    res.set("Service-Worker-Allowed", "/");
+    next();
+  });
+
+  /** Lets the admin panel be added to the phone's home screen as an app (needed for notifications on iPhone). */
+  app.get("/admin.webmanifest", async (_req, res) => {
+    const icon = await logoVersion(db, SITE_IMAGES.icon.key).catch(() => null);
+    const icons = icon
+      ? [{ src: `/api/public/site-images/icon?v=${icon}`, sizes: "512x512", purpose: "any" }]
+      : [
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+        ];
+    res.type("application/manifest+json").set("Cache-Control", "no-cache").send(
+      JSON.stringify({
+        name: "إدارة استراحة الجود",
+        short_name: "إدارة الجود",
+        lang: "ar",
+        dir: "rtl",
+        start_url: "/admin",
+        scope: "/",
+        display: "standalone",
+        background_color: "#0f2620",
+        theme_color: "#183B32",
+        icons,
+      }),
+    );
   });
 
   if (clientDistDir && fs.existsSync(path.join(clientDistDir, "index.html"))) {
