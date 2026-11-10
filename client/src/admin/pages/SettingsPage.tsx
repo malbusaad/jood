@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useUser } from "../auth";
 import { ImageUploadCard, LicenseLogoCard, TickerEditor, type TickerValue } from "./SiteExtrasSettings";
@@ -197,7 +197,12 @@ function Section({ def, initial, canEdit }: { def: SectionDef; initial: unknown;
   const [value, setValue] = useState(initial);
   const [saved, setSaved] = useState(false);
   const m = useMutation();
-  useEffect(() => setValue(initial), [initial]);
+  // Follow new data from the server without wiping what was just typed (no delayed reset after the first render).
+  const [seen, setSeen] = useState(initial);
+  if (seen !== initial) {
+    setSeen(initial);
+    setValue(initial);
+  }
 
   async function save() {
     // Lines fields: drop blank lines before saving.
@@ -236,7 +241,12 @@ function FaqEditor({ initial, canEdit }: { initial: { q: string; a: string }[]; 
   const [items, setItems] = useState(initial);
   const [saved, setSaved] = useState(false);
   const m = useMutation();
-  useEffect(() => setItems(initial), [initial]);
+  // Follow new data from the server without wiping what was just typed (no delayed reset after the first render).
+  const [seen, setSeen] = useState(initial);
+  if (seen !== initial) {
+    setSeen(initial);
+    setItems(initial);
+  }
   return (
     <Card title="الأسئلة الشائعة">
       <ol className="space-y-4">
@@ -287,7 +297,12 @@ function ContractEditor({ initial }: { initial: string }) {
   const [text, setText] = useState(initial);
   const [saved, setSaved] = useState(false);
   const m = useMutation();
-  useEffect(() => setText(initial), [initial]);
+  // Follow new data from the server without wiping what was just typed (no delayed reset after the first render).
+  const [seen, setSeen] = useState(initial);
+  if (seen !== initial) {
+    setSeen(initial);
+    setText(initial);
+  }
   return (
     <Card title="نص العقد">
       <p className="-mt-2 mb-3 text-sm text-jood-ink/60">

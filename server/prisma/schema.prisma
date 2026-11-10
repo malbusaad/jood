@@ -30,9 +30,10 @@ model User {
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   sessions          Session[]
+  pushSubscriptions PushSubscription[]
   auditLogs         AuditLog[]
-  verifiedPayments  Payment[]  @relation("PaymentVerifiedBy")
-  confirmedBookings Booking[]  @relation("BookingConfirmedBy")
+  verifiedPayments  Payment[]          @relation("PaymentVerifiedBy")
+  confirmedBookings Booking[]          @relation("BookingConfirmedBy")
 
   @@map("users")
 }
@@ -638,4 +639,24 @@ model WhatsAppMessage {
   @@unique([bookingId, kind])
   @@index([status, scheduledAt])
   @@map("whatsapp_messages")
+}
+
+/// جهاز مسجّل لإشعارات الجوال/المتصفح (Web Push) لحساب إدارة
+model PushSubscription {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  /// عنوان خدمة الإشعارات الخاص بالجهاز (من Apple/Google/Mozilla)
+  endpoint      String    @unique
+  p256dh        String    @db.VarChar(200)
+  auth          String    @db.VarChar(100)
+  /// وصف مختصر للجهاز، مثل «آيفون»
+  label         String?   @db.VarChar(100)
+  lastSuccessAt DateTime? @map("last_success_at")
+  lastError     String?   @map("last_error") @db.VarChar(300)
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }

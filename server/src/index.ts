@@ -5,6 +5,7 @@ import { prisma } from "./lib/prisma.js";
 import { createApp } from "./app.js";
 import { metaTemplateSender, metaWhatsAppSender, whatsAppConfigFromEnv } from "./services/notifications.js";
 import { processDueMessages } from "./services/waAutomation.js";
+import { webPushSend } from "./services/push.js";
 import { alertUnpaidBalances, expireStaleBookings } from "./services/bookings.js";
 import { ttlockClient, ttlockConfigFromEnv } from "./services/ttlock.js";
 import { makeSecretBox } from "./lib/secretBox.js";
@@ -27,6 +28,7 @@ const app = createApp({
   secretBox,
   waConfig,
   waSend,
+  push: { send: webPushSend, subject: new URL(env.PUBLIC_BASE_URL).origin },
   lock: (() => {
     const cfg = ttlockConfigFromEnv();
     return cfg ? ttlockClient(cfg) : null;

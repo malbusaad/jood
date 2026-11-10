@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 import { CheckCircle2, RotateCcw, Send, XCircle } from "lucide-react";
 import { Button, Card, Empty, ErrorNote, Field, Loading, PageTitle, dateTime, inputClass, useApi, useMutation } from "../ui";
@@ -129,7 +129,12 @@ function AutomationEditor({ initial, status, onSaved }: { initial: Automation; s
   const [v, setV] = useState(initial);
   const [saved, setSaved] = useState(false);
   const m = useMutation();
-  useEffect(() => setV(initial), [initial]);
+  // Follow new data from the server without wiping what was just typed (no delayed reset after the first render).
+  const [seen, setSeen] = useState(initial);
+  if (seen !== initial) {
+    setSeen(initial);
+    setV(initial);
+  }
   const areas = useRef<Partial<Record<Kind, HTMLTextAreaElement | null>>>({});
 
   const setMsg = (k: Kind, patch: Partial<MessageCfg>) => setV({ ...v, messages: { ...v.messages, [k]: { ...v.messages[k], ...patch } } });

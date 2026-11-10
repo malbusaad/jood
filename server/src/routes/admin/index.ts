@@ -11,6 +11,8 @@ import { auditRouter, notificationsRouter } from "./activity.js";
 import { bookingsRouter, calendarRouter, dashboardRouter, guestsRouter } from "./bookings.js";
 import type { WhatsAppConfig, WhatsAppSender, WhatsAppTemplateSender } from "../../services/notifications.js";
 import { whatsappRouter } from "./whatsapp.js";
+import { pushRouter } from "./push.js";
+import type { PushSend } from "../../services/push.js";
 import type { LockClient } from "../../services/ttlock.js";
 import type { SecretBox } from "../../lib/secretBox.js";
 import { getSetting } from "../../settings/registry.js";
@@ -30,6 +32,7 @@ export function adminRouter(
     secretBox: SecretBox;
     waConfig?: WhatsAppConfig | null;
     waSend?: WhatsAppTemplateSender | null;
+    push?: { send: PushSend; subject: string } | null;
   },
 ) {
   const router = Router();
@@ -47,6 +50,7 @@ export function adminRouter(
   router.use("/whatsapp", requireRole("OWNER"), whatsappRouter(db, { waConfig: opts.waConfig ?? null, waSend: opts.waSend ?? null }));
   router.use("/users", requireRole("OWNER"), usersRouter(db));
   router.use("/notifications", notificationsRouter(db));
+  router.use("/push", pushRouter(db, { box: opts.secretBox, push: opts.push ?? null }));
   router.use("/audit", requireRole("OWNER"), auditRouter(db));
 
   /** Ministry of Tourism logo: uploaded by the owner as base64 JSON (PNG/JPG/WebP, max 512 KB). */

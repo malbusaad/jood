@@ -551,3 +551,42 @@ describe("WhatsApp automation page", () => {
     expect(calls.some((c) => c.method === "PUT")).toBe(false);
   });
 });
+
+describe("phone notifications card", () => {
+  const info = { enabled: true, publicKey: "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U", devices: [] };
+
+  it("on an iPhone in Safari, explains how to add the panel to the home screen first", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari");
+    mockAdminApi({ "GET /api/admin/push": () => [200, info] }, OWNER);
+    renderAt("/admin/notifications");
+    expect(await screen.findByText(/إضافة إلى الشاشة الرئيسية/)).toBeInTheDocument();
+    vi.restoreAllMocks();
+  });
+
+  it("subscribes this device and sends its keys to the server", async () => {
+    const sub = { endpoint: "https://web.push.apple.com/abc", toJSON: () => ({ endpoint: "https://web.push.apple.com/abc", keys: { p256dh: "p".repeat(20), auth: "a".repeat(8) } }), unsubscribe: async () => true };
+    let current: typeof sub | null = null;
+    const reg = { pushManager: { getSubscription: async () => current, subscribe: vi.fn(async () => (current = sub)) } };
+    vi.stubGlobal("PushManager", function PushManager() {});
+    vi.stubGlobal("Notification", { requestPermission: async () => "granted" });
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { register: async () => reg, getRegistration: async () => reg, ready: Promise.resolve(reg) } });
+    let devices: unknown[] = [];
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/push": () => [200, { ...info, devices }],
+        "POST /api/admin/push/subscriptions": (body) => {
+          devices = [{ id: "d1", label: "كمبيوتر", endpoint: (body as { endpoint: string }).endpoint, service: "web.push.apple.com", createdAt: "", lastSuccessAt: null, lastError: null }];
+          return [201, { id: "d1" }];
+        },
+      },
+      OWNER,
+    );
+    renderAt("/admin/notifications");
+    fireEvent.click(await screen.findByRole("button", { name: /تفعيل الإشعارات على هذا الجهاز/ }));
+    expect(await screen.findByText("الإشعارات مفعّلة على هذا الجهاز.")).toBeInTheDocument();
+    expect(reg.pushManager.subscribe).toHaveBeenCalledWith(expect.objectContaining({ userVisibleOnly: true }));
+    expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ endpoint: "https://web.push.apple.com/abc", keys: { p256dh: "p".repeat(20) } });
+    expect(screen.getByRole("button", { name: "إشعار تجريبي" })).toBeInTheDocument();
+    Reflect.deleteProperty(navigator, "serviceWorker");
+  });
+});

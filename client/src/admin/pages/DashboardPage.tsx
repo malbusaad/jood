@@ -1,3 +1,4 @@
+import { PushCard } from "../PushSetup";
 import { Link } from "react-router";
 import { AlertTriangle, CalendarCheck, CircleDollarSign, Inbox, Plus, Receipt, XCircle } from "lucide-react";
 import type { Dashboard } from "../types";
@@ -25,6 +26,7 @@ export default function DashboardPage() {
           </Button>
         </Link>
       </PageTitle>
+      <PushCard compact />
       <ErrorNote>{error}</ErrorNote>
       {loading && !d ? (
         <Loading />

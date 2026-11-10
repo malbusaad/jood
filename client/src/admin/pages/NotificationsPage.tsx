@@ -1,3 +1,4 @@
+import { PushCard } from "../PushSetup";
 import { Link } from "react-router";
 import type { Notification } from "../types";
 import { Button, Card, Empty, ErrorNote, Loading, PageTitle, dateTime, useApi, useMutation } from "../ui";
@@ -21,6 +22,7 @@ export default function NotificationsPage() {
           </Button>
         )}
       </PageTitle>
+      <PushCard />
       <ErrorNote>{error}</ErrorNote>
       <Card>
         {loading && !data ? (

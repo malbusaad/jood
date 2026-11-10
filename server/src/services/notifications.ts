@@ -1,5 +1,12 @@
 import type { NotificationType, PrismaClient } from "@prisma/client";
 import { getSetting } from "../settings/registry.js";
+import { pushToAdmins, type PushDeps } from "./push.js";
+
+/** Set once at start-up: every owner notification is also pushed to registered phones. */
+let pushDeps: PushDeps | null = null;
+export function enablePushNotifications(deps: PushDeps | null) {
+  pushDeps = deps;
+}
 
 export interface WhatsAppConfig {
   token: string;
@@ -70,7 +77,7 @@ export async function notifyOwner(db: PrismaClient, n: OwnerNotification, sender
   const settings = await getSetting(db, "notifications");
   const willSend = Boolean(sender && settings.whatsappEnabled && settings.ownerWhatsapp);
 
-  const notification = await db.notification.create({
+  const created = await db.notification.create({
     data: {
       type: n.type,
       title: n.title,
@@ -79,6 +86,13 @@ export async function notifyOwner(db: PrismaClient, n: OwnerNotification, sender
       whatsappStatus: willSend ? "PENDING" : "NOT_CONFIGURED",
     },
   });
+  const notification = created;
+  // Phone notification (free Web Push). Never blocks or breaks the booking flow.
+  if (pushDeps) {
+    await pushToAdmins(pushDeps, { title: n.title, body: n.body, url: n.bookingId ? `/admin/bookings/${n.bookingId}` : "/admin/notifications" }).catch((err) =>
+      console.error("[push] failed:", err instanceof Error ? err.message : err),
+    );
+  }
   if (!willSend) return notification;
 
   try {

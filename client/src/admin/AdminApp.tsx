@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
+import { useAdminApp } from "./PushSetup";
 import { AuthProvider, RequireAuth } from "./auth";
 import AdminLayout from "./AdminLayout";
 import LoginPage from "./pages/LoginPage";
@@ -24,6 +25,7 @@ const UsersPage = lazy(() => import("./pages/UsersPage"));
 const AuditPage = lazy(() => import("./pages/AuditPage"));
 
 export default function AdminApp() {
+  useAdminApp();
   return (
     <AuthProvider>
       <Routes>
