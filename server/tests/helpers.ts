@@ -9,7 +9,7 @@ export const db = new PrismaClient();
 const TABLES = [
   "audit_logs", "notifications", "guest_access_tokens", "payments", "media_assets", "booking_locks",
   "booking_items", "bookings", "guests", "pricing_rules", "resource_conflicts", "resource_amenities",
-  "booking_resources", "amenities", "sessions", "users", "site_settings", "discount_redemptions", "discount_codes",
+  "booking_resources", "amenities", "sessions", "users", "site_settings", "discount_redemptions", "discount_codes", "whatsapp_messages",
 ];
 
 /** Empties every table (test database only — guarded in tests/setup.ts). */

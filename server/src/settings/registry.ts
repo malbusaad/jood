@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { CONTRACT_TEMPLATE } from "./contract-template.js";
+import { DEFAULT_WA_MESSAGES, WA_KINDS, unknownVariables } from "../services/waTemplates.js";
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "الوقت بصيغة HH:mm");
 const nullableUrl = z.url().max(500).nullable();
@@ -253,6 +254,8 @@ export const settingDefinitions = {
       wifiName: z.string().trim().max(100).nullable(),
       wifiPassword: z.string().max(100).nullable(),
       departureInstructions: z.array(text(300)).max(30),
+      /** تعليمات الوصول (تُرسل مع رمز الدخول) */
+      arrivalInstructions: z.string().trim().max(500).nullable().default(null),
       /** ساعات بقاء رابط الضيف صالحًا بعد وقت الخروج */
       linkGraceHours: z.number().int().min(0).max(24 * 14),
       /** متى يظهر رمز الدخول وبيانات الواي فاي في البوابة: يوم الدخول فقط، أو فور فتح الرابط */
@@ -269,6 +272,49 @@ export const settingDefinitions = {
       ],
       linkGraceHours: 12,
       showCodesFrom: "CHECKIN_DAY",
+      arrivalInstructions: null,
+    },
+  },
+  /** أتمتة رسائل واتساب للضيوف. متوقفة افتراضيًا: لا تُرسل رسالة قبل ربط الحساب واعتماد القوالب وتشغيلها من المالك. */
+  whatsappAutomation: {
+    public: false,
+    schema: z.object({
+      /** OFF: لا تُرسل. TEST: تُجهز وتظهر في السجل دون إرسال. LIVE: تُرسل للضيوف */
+      mode: z.enum(["OFF", "TEST", "LIVE"]),
+      reminderHoursBefore: z.number().int().min(1).max(24 * 7),
+      accessHoursBefore: z.number().int().min(1).max(48),
+      thankYouHoursAfter: z.number().int().min(0).max(24 * 7),
+      messages: z.object(
+        Object.fromEntries(
+          WA_KINDS.map((k) => [
+            k,
+            z.object({
+              enabled: z.boolean(),
+              /** اسم القالب المعتمد في Meta (بأحرف إنجليزية صغيرة وأرقام و _) */
+              templateName: z.string().trim().regex(/^[a-z0-9_]{1,512}$/, "اسم القالب بأحرف إنجليزية صغيرة وأرقام و _").nullable(),
+              language: z.string().trim().regex(/^[a-z]{2}(_[A-Z]{2})?$/, "رمز اللغة مثل ar أو en_US"),
+              text: z
+                .string()
+                .trim()
+                .min(1)
+                .max(1024)
+                .superRefine((t, ctx) => {
+                  const bad = unknownVariables(t);
+                  if (bad.length) ctx.addIssue({ code: "custom", message: `متغير غير معروف: ${bad.join("، ")}` });
+                }),
+            }),
+          ]),
+        ) as Record<(typeof WA_KINDS)[number], z.ZodObject<{ enabled: z.ZodBoolean; templateName: z.ZodNullable<z.ZodString>; language: z.ZodString; text: z.ZodString }>>,
+      ),
+    }),
+    initial: {
+      mode: "OFF",
+      reminderHoursBefore: 24,
+      accessHoursBefore: 2,
+      thankYouHoursAfter: 3,
+      messages: Object.fromEntries(
+        WA_KINDS.map((k) => [k, { enabled: true, templateName: null, language: "ar", text: DEFAULT_WA_MESSAGES[k].text }]),
+      ) as Record<(typeof WA_KINDS)[number], { enabled: boolean; templateName: string | null; language: string; text: string }>,
     },
   },
   doorLock: {

@@ -113,6 +113,7 @@ const SECTIONS: SectionDef[] = [
       { path: "entryCode", label: "رمز الدخول", type: "text", ltr: true },
       { path: "wifiName", label: "اسم شبكة الواي فاي", type: "text", ltr: true },
       { path: "wifiPassword", label: "كلمة مرور الواي فاي", type: "text", ltr: true },
+      { path: "arrivalInstructions", label: "تعليمات الوصول (تُرسل مع رمز الدخول)", type: "textarea", hint: "مثل: البوابة الثانية جهة الشرق. سطر واحد يُفضل." },
       { path: "departureInstructions", label: "إرشادات المغادرة (كل سطر إرشاد)", type: "lines" },
       { path: "linkGraceHours", label: "ساعات بقاء الرابط بعد وقت الخروج", type: "number" },
       { path: "showCodesFrom", label: "متى يظهر رمز الدخول والواي فاي", type: "select", options: [["CHECKIN_DAY", "يوم الدخول فقط"], ["IMMEDIATELY", "فور فتح الرابط"]] },

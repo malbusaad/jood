@@ -93,3 +93,47 @@ export async function notifyOwner(db: PrismaClient, n: OwnerNotification, sender
     });
   }
 }
+
+/** Sends one approved template message. Returns the provider's message id. */
+export type WhatsAppTemplateSender = (to: string, msg: { template: string; language: string; params: string[] }) => Promise<{ id: string | null }>;
+
+export function metaTemplateSender(config: WhatsAppConfig, fetchImpl: typeof fetch = fetch): WhatsAppTemplateSender {
+  return async (to, msg) => {
+    const res = await fetchImpl(`https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "template",
+        template: {
+          name: msg.template,
+          language: { code: msg.language },
+          components: msg.params.length ? [{ type: "body", parameters: msg.params.map((text) => ({ type: "text", text })) }] : [],
+        },
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = (await res.json().catch(() => null)) as { messages?: { id?: string }[]; error?: { message?: string; code?: number } } | null;
+    if (!res.ok) {
+      throw new Error(`WhatsApp API ${res.status}${body?.error?.code ? ` (${body.error.code})` : ""}: ${body?.error?.message ?? "request failed"}`.slice(0, 480));
+    }
+    return { id: body?.messages?.[0]?.id ?? null };
+  };
+}
+
+/** Connection check: reads the phone number's details from Meta (no message is sent). */
+export async function checkWhatsAppConnection(config: WhatsAppConfig, fetchImpl: typeof fetch = fetch) {
+  const res = await fetchImpl(
+    `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,name_status`,
+    { headers: { Authorization: `Bearer ${config.token}` }, signal: AbortSignal.timeout(8000) },
+  );
+  const body = (await res.json().catch(() => null)) as Record<string, unknown> & { error?: { message?: string; code?: number } };
+  if (!res.ok) throw new Error(`WhatsApp API ${res.status}${body?.error?.code ? ` (${body.error.code})` : ""}: ${body?.error?.message ?? "request failed"}`.slice(0, 480));
+  return {
+    displayPhoneNumber: (body.display_phone_number as string) ?? null,
+    verifiedName: (body.verified_name as string) ?? null,
+    qualityRating: (body.quality_rating as string) ?? null,
+    nameStatus: (body.name_status as string) ?? null,
+  };
+}

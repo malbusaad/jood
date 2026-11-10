@@ -388,7 +388,7 @@ export default function BookingForm() {
           </label>
           <p className="mt-4 flex items-start gap-2 rounded-xl bg-jood-beige px-4 py-3 text-sm leading-7 text-jood-ink/80">
             <Info aria-hidden className="mt-1 size-4 shrink-0 text-jood-gold" />
-            هذا طلب حجز وليس حجزًا مؤكدًا. سيتواصل معك {site.general.name} عبر واتساب لتأكيد التفاصيل وإرسال العقد، ويتأكد الحجز بعد التحقق من وصول المبلغ.
+            هذا طلب حجز وليس حجزًا مؤكدًا. سيتواصل معك {site.general.name} عبر واتساب لتأكيد التفاصيل وإرسال العقد، ويتأكد الحجز بعد التحقق من وصول المبلغ. بإرسال الطلب توافق على استلام رسائل حجزك (التأكيد والتذكير ورمز الدخول) على واتساب من رقم الاستراحة.
           </p>
           <button
             type="submit"

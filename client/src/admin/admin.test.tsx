@@ -481,3 +481,73 @@ describe("booking payments: deposit plan, security deposit and refunds", () => {
     expect(calls.find((c) => c.path.endsWith("/refunds"))!.body).toEqual({ purpose: "SECURITY_DEPOSIT", method: "BANK_TRANSFER", amount: 450, note: "خصم 50 لكسر كأس" });
   });
 });
+
+describe("WhatsApp automation page", () => {
+  const auto = {
+    mode: "OFF", reminderHoursBefore: 24, accessHoursBefore: 2, thankYouHoursAfter: 3,
+    messages: Object.fromEntries(
+      ["REQUEST_RECEIVED", "BOOKING_ACCEPTED", "PAYMENT_CONFIRMED", "REMINDER", "ACCESS", "PAYMENT_PENDING", "THANK_YOU"].map((k) => [k, { enabled: true, templateName: null, language: "ar", text: `نص ${k} {customer_name}` }]),
+    ),
+  };
+  const status = {
+    connection: { configured: false, ok: false, details: null, error: null },
+    mode: "OFF",
+    variables: { customer_name: "اسم الضيف", door_code: "رمز الدخول (TTLock)" },
+    messages: [
+      { kind: "REQUEST_RECEIVED", title: "استلام طلب الحجز", when: "فور الطلب", defaultText: "x", metaTemplate: "x" },
+      { kind: "ACCESS", title: "رمز الدخول", when: "قبل الدخول", defaultText: "y", metaTemplate: "y" },
+    ],
+  };
+  const log = {
+    items: [{ id: "m1", kind: "ACCESS", status: "BLOCKED", scheduledAt: "2026-12-10T09:00:00Z", sentAt: null, attempts: 1, preview: null, lastError: "لم يكتمل السداد والتأمين", booking: { id: "b1", reference: "JD-000007", guest: { name: "سارة", phone: "966501234567" } } }],
+    total: 1, pageSize: 30, counts: { BLOCKED: 1 },
+  };
+
+  it("shows it is not connected, edits a message and its template, and retries a blocked message", async () => {
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/whatsapp/status": () => [200, status],
+        "GET /api/admin/settings": () => [200, { whatsappAutomation: auto }],
+        "GET /api/admin/whatsapp/messages": () => [200, log],
+        "PUT /api/admin/settings/whatsappAutomation": (body) => [200, { key: "whatsappAutomation", value: body }],
+        "POST /api/admin/whatsapp/messages/m1/retry": () => [200, { ok: true }],
+      },
+      OWNER,
+    );
+    renderAt("/admin/whatsapp");
+    expect(await screen.findByText(/غير مربوط بعد/)).toBeInTheDocument();
+    expect(screen.getByText("السبب: لم يكتمل السداد والتأمين")).toBeInTheDocument();
+
+    const access = screen.getByRole("region", { name: "رمز الدخول" });
+    fireEvent.click(within(access).getByRole("button", { name: "{door_code}" }));
+    fireEvent.change(within(access).getByLabelText(/اسم القالب المعتمد في Meta/), { target: { value: "jood_access" } });
+    fireEvent.click(screen.getByRole("radio", { name: /تجربة/ }));
+    fireEvent.click(screen.getByRole("button", { name: "حفظ" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+    const body = calls.find((c) => c.method === "PUT")!.body as typeof auto;
+    expect(body.mode).toBe("TEST");
+    expect(body.messages.ACCESS).toMatchObject({ templateName: "jood_access", text: expect.stringContaining("{door_code}") });
+    expect(body.messages.REQUEST_RECEIVED!.templateName).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /إعادة المحاولة/ }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/admin/whatsapp/messages/m1/retry")).toBe(true));
+  });
+
+  it("asks before switching sending on for guests", async () => {
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/whatsapp/status": () => [200, status],
+        "GET /api/admin/settings": () => [200, { whatsappAutomation: auto }],
+        "GET /api/admin/whatsapp/messages": () => [200, { ...log, items: [] }],
+        "PUT /api/admin/settings/whatsappAutomation": (body) => [200, { key: "whatsappAutomation", value: body }],
+      },
+      OWNER,
+    );
+    vi.stubGlobal("confirm", () => false);
+    renderAt("/admin/whatsapp");
+    fireEvent.click(await screen.findByRole("radio", { name: /تشغيل/ }));
+    fireEvent.click(screen.getByRole("button", { name: "حفظ" }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+});

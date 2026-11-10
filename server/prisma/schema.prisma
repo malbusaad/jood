@@ -277,6 +277,7 @@ model Booking {
   notifications Notification[]
   doorCodes     DoorCode[]
   redemption    DiscountRedemption?
+  waMessages    WhatsAppMessage[]
 
   @@index([status])
   @@index([startDate])
@@ -592,4 +593,49 @@ model DiscountRedemption {
 
   @@index([codeId])
   @@map("discount_redemptions")
+}
+
+// ─────────────────────────── أتمتة واتساب ───────────────────────────
+
+enum WaMessageKind {
+  REQUEST_RECEIVED // استلام طلب الحجز
+  BOOKING_ACCEPTED // قبول الطلب وتعليمات الدفع
+  PAYMENT_CONFIRMED // اعتماد الدفع وتأكيد الحجز
+  REMINDER // تذكير قبل الموعد
+  ACCESS // رمز الدخول قبل موعد الدخول
+  PAYMENT_PENDING // تنبيه الضيف بعدم اكتمال السداد (بدل رمز الدخول)
+  THANK_YOU // شكر بعد المغادرة
+}
+
+enum WaMessageStatus {
+  SCHEDULED // بانتظار موعده
+  SENDING // قيد الإرسال
+  SENT // أُرسلت
+  FAILED // فشلت (يمكن إعادة المحاولة)
+  SKIPPED // تُركت (الأتمتة متوقفة، أو أُلغي الحجز، أو فات موعدها)
+  BLOCKED // مُنعت لعدم استيفاء الشروط (مثل عدم اكتمال السداد)
+  DRY_RUN // وضع التجربة: جُهزت ولم تُرسل
+}
+
+/// رسالة واتساب واحدة لكل حجز ونوع — لا تتكرر، وتبقى بعد إعادة تشغيل الخادم
+model WhatsAppMessage {
+  id          String          @id @default(uuid()) @db.Uuid
+  bookingId   String          @map("booking_id") @db.Uuid
+  kind        WaMessageKind
+  status      WaMessageStatus @default(SCHEDULED)
+  scheduledAt DateTime        @map("scheduled_at")
+  attempts    Int             @default(0)
+  /// نص الرسالة كما أُرسل — رمز الدخول مخفي دائمًا
+  preview     String?
+  lastError   String?         @map("last_error") @db.VarChar(500)
+  providerId  String?         @map("provider_id") @db.VarChar(200)
+  sentAt      DateTime?       @map("sent_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, kind])
+  @@index([status, scheduledAt])
+  @@map("whatsapp_messages")
 }
