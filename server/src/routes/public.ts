@@ -96,7 +96,12 @@ export function publicRouter(
           return hero ? mediaUrl(hero.storageKey) : null;
         })(),
         videoUrl: media.find((m) => m.kind === "VIDEO") ? mediaUrl(media.find((m) => m.kind === "VIDEO")!.storageKey) : null,
-        video: settings.introVideo.url ? videoEmbed(settings.introVideo.url) : null,
+        // An uploaded video file is shown first; otherwise the YouTube/Vimeo link.
+        video: media.find((m) => m.kind === "VIDEO")
+          ? { kind: "file" as const, src: mediaUrl(media.find((m) => m.kind === "VIDEO")!.storageKey) }
+          : settings.introVideo.url
+            ? videoEmbed(settings.introVideo.url)
+            : null,
         gallery: media
           .filter((m) => m.kind === "IMAGE")
           .map((m) => ({ url: mediaUrl(m.storageKey), alt: m.alt ?? "", amenityId: m.amenityId })),

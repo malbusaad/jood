@@ -12,9 +12,50 @@ const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "
 const select = { id: true, storageKey: true, mimeType: true, sizeBytes: true, alt: true, amenityId: true, sortOrder: true, isHero: true, createdAt: true } as const;
 const withUrl = <M extends { storageKey: string }>(m: M) => ({ ...m, url: `/api/media/${encodeURIComponent(m.storageKey)}` });
 
+export const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
+
+/** MP4 / MOV ("ftyp" box) or WebM, from the file's own bytes. */
+export function detectVideoType(buf: Buffer): string | null {
+  if (buf.length >= 12 && buf.subarray(4, 8).toString("latin1") === "ftyp") {
+    return buf.subarray(8, 10).toString("latin1") === "qt" ? "video/quicktime" : "video/mp4";
+  }
+  if (buf.length >= 4 && buf.readUInt32BE(0) === 0x1a45dfa3) return "video/webm";
+  return null;
+}
+
 /** «الصور»: the owner uploads photos of the rest house (stored in the database). */
 export function mediaRouter(db: PrismaClient) {
   const router = Router();
+
+  /** The intro video file (raw body). Replaces the previous one. */
+  router.get("/video", async (_req, res) => {
+    const v = await db.mediaAsset.findFirst({ where: { kind: "VIDEO", isPrivate: false }, select: { storageKey: true, sizeBytes: true, mimeType: true, createdAt: true } });
+    res.json({ video: v ? { ...v, url: `/api/media/${encodeURIComponent(v.storageKey)}` } : null });
+  });
+  router.put("/video", async (req, res) => {
+    const buf = req.body as Buffer;
+    if (!Buffer.isBuffer(buf) || buf.length === 0) throw new HttpError(400, "لم يصل ملف الفيديو");
+    const mime = detectVideoType(buf);
+    if (!mime) throw new HttpError(400, "الفيديو يجب أن يكون MP4 أو MOV أو WebM");
+    // HEVC (iPhone «High Efficiency») plays on Apple devices but not on every Android/PC browser.
+    const head = buf.subarray(0, Math.min(buf.length, 4 * 1024 * 1024)).toString("latin1");
+    const tail = buf.subarray(Math.max(0, buf.length - 4 * 1024 * 1024)).toString("latin1");
+    const hevc = /hvc1|hev1/.test(head) || /hvc1|hev1/.test(tail);
+    const v = await db.$transaction(async (tx) => {
+      await tx.mediaAsset.deleteMany({ where: { kind: "VIDEO" } });
+      return tx.mediaAsset.create({
+        data: { kind: "VIDEO", storageKey: `video-${randomUUID()}.${mime === "video/webm" ? "webm" : "mp4"}`, mimeType: mime === "video/quicktime" ? "video/mp4" : mime, sizeBytes: buf.length, data: Buffer.from(buf) },
+        select: { storageKey: true, sizeBytes: true },
+      });
+    });
+    await audit(db, req, { action: "media.video_upload", entityType: "media", details: { size: buf.length, mime, hevc } });
+    res.json({ url: `/api/media/${encodeURIComponent(v.storageKey)}`, size: v.sizeBytes, warning: hevc ? "الفيديو بصيغة HEVC (عالية الكفاءة): يعمل على أجهزة Apple، وقد لا يعمل على بعض أجهزة أندرويد والكمبيوتر. الأفضل تصديره بصيغة MP4 ‏(H.264)." : null });
+  });
+  router.delete("/video", async (req, res) => {
+    await db.mediaAsset.deleteMany({ where: { kind: "VIDEO" } });
+    await audit(db, req, { action: "media.video_delete", entityType: "media" });
+    res.status(204).end();
+  });
 
   router.get("/", async (_req, res) => {
     const items = await db.mediaAsset.findMany({ where: { kind: "IMAGE", isPrivate: false }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select });

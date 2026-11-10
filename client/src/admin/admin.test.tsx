@@ -658,6 +658,7 @@ describe("photos and video", () => {
         "GET /api/admin/settings": () => [200, { introVideo: { url: null } }],
         "PATCH /api/admin/media/p1": () => [200, { ...photos[0], isHero: true }],
         "PUT /api/admin/settings/introVideo": (body) => [200, { key: "introVideo", value: body }],
+        "GET /api/admin/media/video": () => [200, { video: { url: "/api/media/video-1.mp4", sizeBytes: 1000 } }],
       },
       OWNER,
     );
@@ -667,8 +668,10 @@ describe("photos and video", () => {
     expect(screen.getByRole("button", { name: "جعل الصورة 2 الرئيسية" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "جعل الصورة 1 الرئيسية" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH" && (c.body as { isHero?: boolean }).isHero)).toBe(true));
+    expect(await screen.findByLabelText("الفيديو الحالي")).toHaveAttribute("src", "/api/media/video-1.mp4");
+    expect(screen.getByRole("button", { name: "استبدال الفيديو" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("رابط الفيديو"), { target: { value: "https://youtu.be/abc123def" } });
-    fireEvent.click(screen.getByRole("button", { name: "حفظ" }));
+    fireEvent.click(screen.getByRole("button", { name: "حفظ الرابط" }));
     await waitFor(() => expect(calls.find((c) => c.path === "/api/admin/settings/introVideo")?.body).toEqual({ url: "https://youtu.be/abc123def" }));
   });
 });
