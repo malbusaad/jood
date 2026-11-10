@@ -65,6 +65,33 @@ describe("create-owner script", () => {
   });
 });
 
+describe("reset-password script", () => {
+  const script = ["--import", "tsx", "src/scripts/reset-password.ts"];
+
+  it("sets a new password, signs out every session, never prints the password", async () => {
+    const owner = await db.user.create({ data: { email: "owner@jood.test", name: "المالك", role: "OWNER", passwordHash: "x" } });
+    await db.session.create({ data: { tokenHash: "a".repeat(64), userId: owner.id, expiresAt: new Date(Date.now() + 3600_000) } });
+    const out = await run("node", [...script, "--email", "Owner@Jood.test"], { cwd: serverDir, env: { ...process.env, NEW_PASSWORD: "brand-new-password-1" } });
+    expect(out.stdout).toMatch(/Password changed for owner@jood.test/);
+    expect(out.stdout + out.stderr).not.toContain("brand-new-password-1");
+    const after = await db.user.findUniqueOrThrow({ where: { id: owner.id } });
+    expect(await verifyPassword("brand-new-password-1", after.passwordHash)).toBe(true);
+    expect(await db.session.count()).toBe(0);
+    expect(await db.auditLog.count({ where: { action: "user.password_reset_shell" } })).toBe(1);
+  });
+
+  it("refuses short passwords and unknown accounts", async () => {
+    await db.user.create({ data: { email: "owner@jood.test", name: "المالك", role: "OWNER", passwordHash: "x" } });
+    await expect(run("node", [...script, "--email", "owner@jood.test"], { cwd: serverDir, env: { ...process.env, NEW_PASSWORD: "short" } })).rejects.toMatchObject({
+      stderr: expect.stringMatching(/at least/),
+    });
+    await expect(run("node", [...script, "--email", "nobody@jood.test"], { cwd: serverDir, env: { ...process.env, NEW_PASSWORD: "long-enough-password" } })).rejects.toMatchObject({
+      stderr: expect.stringMatching(/No account/),
+    });
+    expect((await db.user.findFirstOrThrow()).passwordHash).toBe("x");
+  });
+});
+
 describe("migrations", () => {
   it("are all applied to the database", async () => {
     const { stdout } = await run("npx", ["prisma", "migrate", "status"], { cwd: serverDir, env: process.env });
