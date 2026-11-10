@@ -17,7 +17,8 @@
     "db:seed": "node dist/scripts/seed.js",
     "db:seed:dev": "tsx --env-file-if-exists=.env src/scripts/seed.ts",
     "create-owner": "node dist/scripts/create-owner.js",
-    "create-owner:dev": "tsx --env-file-if-exists=.env src/scripts/create-owner.ts"
+    "create-owner:dev": "tsx --env-file-if-exists=.env src/scripts/create-owner.ts",
+    "reset-password": "node dist/scripts/reset-password.js"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
