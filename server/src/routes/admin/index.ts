@@ -9,7 +9,8 @@ import { discountsRouter } from "./discounts.js";
 import { usersRouter } from "./users.js";
 import { auditRouter, notificationsRouter } from "./activity.js";
 import { bookingsRouter, calendarRouter, dashboardRouter, guestsRouter } from "./bookings.js";
-import type { WhatsAppSender } from "../../services/notifications.js";
+import type { WhatsAppConfig, WhatsAppSender, WhatsAppTemplateSender } from "../../services/notifications.js";
+import { whatsappRouter } from "./whatsapp.js";
 import type { LockClient } from "../../services/ttlock.js";
 import type { SecretBox } from "../../lib/secretBox.js";
 import { getSetting } from "../../settings/registry.js";
@@ -22,7 +23,14 @@ import { z } from "zod";
 /** Everything under /api/admin requires a signed-in admin. Sensitive areas are owner-only. */
 export function adminRouter(
   db: PrismaClient,
-  opts: { whatsapp: WhatsAppSender | null; publicBaseUrl: string; lock: LockClient | null; secretBox: SecretBox },
+  opts: {
+    whatsapp: WhatsAppSender | null;
+    publicBaseUrl: string;
+    lock: LockClient | null;
+    secretBox: SecretBox;
+    waConfig?: WhatsAppConfig | null;
+    waSend?: WhatsAppTemplateSender | null;
+  },
 ) {
   const router = Router();
   router.use(requireAuth);
@@ -36,6 +44,7 @@ export function adminRouter(
   router.use("/resources", requireRole("OWNER"), resourcesRouter(db));
   router.use("/pricing", requireRole("OWNER"), pricingRouter(db));
   router.use("/discounts", requireRole("OWNER"), discountsRouter(db));
+  router.use("/whatsapp", requireRole("OWNER"), whatsappRouter(db, { waConfig: opts.waConfig ?? null, waSend: opts.waSend ?? null }));
   router.use("/users", requireRole("OWNER"), usersRouter(db));
   router.use("/notifications", notificationsRouter(db));
   router.use("/audit", requireRole("OWNER"), auditRouter(db));

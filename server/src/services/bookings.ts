@@ -11,6 +11,7 @@ import { notifyOwner, type WhatsAppSender } from "./notifications.js";
 import type { SecretBox } from "../lib/secretBox.js";
 import { computeDiscount, findCode, redeem, type AppliedDiscount } from "./discounts.js";
 import { paymentSummary, upfrontFor } from "./payments.js";
+import { onBookingAccepted, onBookingClosed, onBookingConfirmed, onBookingRequested } from "./waAutomation.js";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -198,6 +199,8 @@ export async function createBooking(
       });
 
       if (discount) await redeem(tx, discount, booking.id, guest.id);
+      // WhatsApp «request received» (sent only if automation is on; one per booking).
+      if (input.channel === "WEBSITE") await onBookingRequested(tx, booking.id);
 
       await tx.bookingItem.createMany({
         data: ev.quote.lines.map((l) => ({ bookingId: booking.id, resourceId: l.resourceId, date: fromIsoDate(l.date), price: l.price })),
@@ -318,6 +321,10 @@ export async function changeStatus(db: PrismaClient, req: Request, id: string, t
     }
 
     const updated = await tx.booking.update({ where: { id }, data });
+    // Queue the guest's WhatsApp messages for this step (no duplicates; sent by the background worker).
+    if (to === "AWAITING_PAYMENT") await onBookingAccepted(tx, id);
+    else if (to === "CONFIRMED") await onBookingConfirmed(tx, updated);
+    else if (to === "CANCELLED" || to === "REJECTED") await onBookingClosed(tx, id, to === "CANCELLED" ? "أُلغي الحجز" : "رُفض الطلب");
     await audit(tx, req, {
       action: "booking.status",
       entityType: "booking",
@@ -373,6 +380,13 @@ export async function recordVerifiedPayment(db: PrismaClient, req: Request, book
       entityId: payment.id,
       details: { bookingId, purpose, method: p.method, amount: p.amount, externalRef: p.externalRef ?? undefined },
     });
+    // Once everything is paid, an entry-code message held back for missing payment goes out automatically.
+    if (paymentSummary({ ...b, payments: [...b.payments, payment] }).fullySettled) {
+      await tx.whatsAppMessage.updateMany({
+        where: { bookingId, kind: "ACCESS", status: "BLOCKED", lastError: "لم يكتمل السداد والتأمين" },
+        data: { status: "SCHEDULED", scheduledAt: new Date(), lastError: null },
+      });
+    }
     return payment;
   });
 }

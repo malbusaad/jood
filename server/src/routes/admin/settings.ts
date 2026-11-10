@@ -4,6 +4,7 @@ import { getSettings, isSettingKey, settingDefinitions, settingKeys } from "../.
 import { HttpError, parse } from "../../lib/http.js";
 import { audit } from "../../lib/audit.js";
 import { requireRole } from "../../auth/session.js";
+import { rescheduleTimed } from "../../services/waAutomation.js";
 
 export function settingsRouter(db: PrismaClient) {
   const router = Router();
@@ -22,6 +23,8 @@ export function settingsRouter(db: PrismaClient) {
     const value = parse(settingDefinitions[key].schema, req.body) as Prisma.InputJsonValue;
     await db.siteSetting.upsert({ where: { key }, create: { key, value }, update: { value } });
     await audit(db, req, { action: "settings.update", entityType: "setting", entityId: key, details: value });
+    // Pending reminder / entry-code / thank-you messages follow the new times.
+    if (key === "whatsappAutomation" || key === "stay") await rescheduleTimed(db);
     res.json({ key, value });
   });
 

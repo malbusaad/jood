@@ -13,7 +13,7 @@ import { adminRouter } from "./routes/admin/index.js";
 import { guestRouter } from "./routes/guest.js";
 import { loadSession, requireSameOrigin } from "./auth/session.js";
 import { HttpError } from "./lib/http.js";
-import type { WhatsAppSender } from "./services/notifications.js";
+import type { WhatsAppConfig, WhatsAppSender, WhatsAppTemplateSender } from "./services/notifications.js";
 import type { LockClient } from "./services/ttlock.js";
 import { makeSecretBox, type SecretBox } from "./lib/secretBox.js";
 
@@ -35,6 +35,9 @@ export interface AppOptions {
   codeCheckLimit?: number;
   /** Sends owner notifications to WhatsApp; null when not configured. */
   whatsapp?: WhatsAppSender | null;
+  /** WhatsApp Cloud API settings (connection check) and template sender for guest messages. */
+  waConfig?: WhatsAppConfig | null;
+  waSend?: WhatsAppTemplateSender | null;
   /** Public site address, used to build guest portal links. */
   publicBaseUrl?: string;
   /** TTLock client for door codes; null when not configured. */
@@ -53,6 +56,8 @@ export function createApp({
   bookingLimit = 10,
   codeCheckLimit = 30,
   whatsapp = null,
+  waConfig = null,
+  waSend = null,
   publicBaseUrl = "http://localhost:5173",
   lock = null,
   secretBox = makeSecretBox("development-only-secret-not-for-production", "door-codes"),
@@ -107,7 +112,7 @@ export function createApp({
     res.set("Cache-Control", "no-store");
     next();
   });
-  app.use("/api/admin", adminRouter(db, { whatsapp, publicBaseUrl, lock, secretBox }));
+  app.use("/api/admin", adminRouter(db, { whatsapp, publicBaseUrl, lock, secretBox, waConfig, waSend }));
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "المسار غير موجود" });
