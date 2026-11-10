@@ -436,6 +436,8 @@ model MediaAsset {
   isHero     Boolean   @default(false) @map("is_hero")
   /// الملفات الخاصة (مثل إثبات التحويل) لا تُخدم إلا للمدير
   isPrivate  Boolean   @default(false) @map("is_private")
+  /// محتوى الصورة نفسها (يُحفظ في قاعدة البيانات لأن قرص الخادم يُمسح مع كل نشر)
+  data       Bytes?
   createdAt  DateTime  @default(now()) @map("created_at")
 
   amenity Amenity? @relation(fields: [amenityId], references: [id], onDelete: SetNull)

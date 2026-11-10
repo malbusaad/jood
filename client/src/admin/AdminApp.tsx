@@ -24,6 +24,7 @@ const WhatsAppPage = lazy(() => import("./pages/WhatsAppPage"));
 const ExpensesPage = lazy(() => import("./pages/ExpensesPage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const ImportPage = lazy(() => import("./pages/ImportPage"));
+const MediaPage = lazy(() => import("./pages/MediaPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
 const AuditPage = lazy(() => import("./pages/AuditPage"));
 
@@ -68,6 +69,7 @@ export default function AdminApp() {
           <Route path="expenses" element={<ExpensesPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="import" element={<ImportPage />} />
+          <Route path="media" element={<MediaPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="audit" element={<AuditPage />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />

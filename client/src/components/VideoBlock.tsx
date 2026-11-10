@@ -1,7 +1,21 @@
 import { Play } from "lucide-react";
 import Pattern from "./Pattern";
 
-export default function VideoBlock({ url, poster }: { url: string | null; poster?: string | null }) {
+export default function VideoBlock({ url, poster, video }: { url: string | null; poster?: string | null; video?: { kind: "iframe" | "file"; src: string } | null }) {
+  if (video?.kind === "iframe") {
+    return (
+      <iframe
+        className="aspect-video w-full rounded-3xl bg-jood-green-950"
+        src={video.src}
+        title="الفيديو التعريفي لاستراحة الجود"
+        loading="lazy"
+        allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        allowFullScreen
+        referrerPolicy="strict-origin-when-cross-origin"
+      />
+    );
+  }
+  if (video?.kind === "file") url = video.src;
   if (url) {
     return (
       <video

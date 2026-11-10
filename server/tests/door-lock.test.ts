@@ -4,7 +4,7 @@ import request from "supertest";
 import { db, fullResource, makeApp, resetDb, signedIn } from "./helpers.js";
 import { addDays, dayOfWeek, todayInRiyadh } from "../src/lib/dates.js";
 import { makeSecretBox } from "../src/lib/secretBox.js";
-import { generateDoorCode } from "../src/services/doorCodes.js";
+import { ensureDoorCodes, generateDoorCode } from "../src/services/doorCodes.js";
 import { TTLockError, ttlockClient, ttlockConfigFromEnv, type LockClient } from "../src/services/ttlock.js";
 
 /** In-memory stand-in for the lock, recording what the app asked TTLock to do. */
@@ -289,5 +289,66 @@ describe("helpers", () => {
     expect(box.open(sealed)).toBe("482915");
     expect(box.open(sealed.slice(0, -2) + "AA")).toBeNull();
     expect(makeSecretBox("another-secret-another-secret-12345", "door-codes").open(sealed)).toBeNull();
+  });
+});
+
+describe("door codes for bookings confirmed without the button (e.g. imported records)", () => {
+  async function importedConfirmed(dates: string[]) {
+    const full = await fullResource();
+    const guest = await db.guest.create({ data: { name: "ضيف من السجل السابق", phone: null } });
+    const b = await db.booking.create({
+      data: {
+        reference: `OLD-${Math.floor(Math.random() * 1e6)}`, guestId: guest.id, status: "CONFIRMED", channel: "IMPORTED",
+        startDate: new Date(`${dates[0]}T00:00:00Z`), endDate: new Date(`${addDays(dates.at(-1)!, 1)}T00:00:00Z`),
+        totalAmount: 900, upfrontAmount: 900, legacyPayment: true, priceBreakdown: [],
+        items: { create: dates.map((d) => ({ resourceId: full.id, date: new Date(`${d}T00:00:00Z`), price: 900 / dates.length })) },
+      },
+    });
+    return b;
+  }
+  const noAlerts = async () => undefined;
+
+  it("creates the missing code once, valid from check-in to check-out", async () => {
+    const lock = fakeLock();
+    const start = nextSunday();
+    const b = await importedConfirmed([start]);
+    expect(await ensureDoorCodes(db, lock, box, noAlerts)).toBe(1);
+    expect(await ensureDoorCodes(db, lock, box, noAlerts)).toBe(0); // already has a valid code
+    expect(lock.calls.filter((c) => c === "add")).toHaveLength(1);
+    const c = await db.doorCode.findFirstOrThrow({ where: { bookingId: b.id } });
+    expect(c.status).toBe("ACTIVE");
+    expect(c.startsAt.toISOString()).toBe(`${start}T11:00:00.000Z`);
+    expect(c.endsAt.toISOString()).toBe(`${addDays(start, 1)}T01:00:00.000Z`);
+  });
+
+  it("for separate days, the code covers only the next day — never the days in between — then the following one", async () => {
+    const lock = fakeLock();
+    const s1 = nextSunday();
+    const s2 = addDays(s1, 7);
+    const b = await importedConfirmed([s1, s2]);
+    await ensureDoorCodes(db, lock, box, noAlerts);
+    const first = await db.doorCode.findFirstOrThrow({ where: { bookingId: b.id, status: "ACTIVE" } });
+    expect(first.endsAt.toISOString()).toBe(`${addDays(s1, 1)}T01:00:00.000Z`);
+    // After the first day is over, the next run replaces it with a code for the second day only.
+    const later = new Date(`${addDays(s1, 2)}T09:00:00Z`);
+    expect(await ensureDoorCodes(db, lock, box, noAlerts, later)).toBe(1);
+    const active = await db.doorCode.findMany({ where: { bookingId: b.id, status: "ACTIVE" } });
+    expect(active).toHaveLength(1);
+    expect(active[0]!.startsAt.toISOString()).toBe(`${s2}T11:00:00.000Z`);
+    expect(lock.calls).toEqual(["add", "delete", "add"]);
+  });
+
+  it("does nothing when the lock is switched off; a TTLock failure alerts the owner once and is not retried in a loop", async () => {
+    const start = nextSunday();
+    await importedConfirmed([start]);
+    await db.siteSetting.update({ where: { key: "doorLock" }, data: { value: { enabled: false } } });
+    expect(await ensureDoorCodes(db, fakeLock(), box, noAlerts)).toBe(0);
+    await db.siteSetting.update({ where: { key: "doorLock" }, data: { value: { enabled: true } } });
+    const alerts: string[] = [];
+    const broken = fakeLock({ failAdd: true });
+    await ensureDoorCodes(db, broken, box, async (b, reason) => void alerts.push(`${b.reference} ${reason}`));
+    await ensureDoorCodes(db, broken, box, async (b, reason) => void alerts.push(`${b.reference} ${reason}`));
+    expect(alerts).toHaveLength(1);
+    expect(broken.calls.filter((c) => c === "add")).toHaveLength(1);
   });
 });

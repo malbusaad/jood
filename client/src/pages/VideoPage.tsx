@@ -8,7 +8,7 @@ export default function VideoPage() {
     <>
       <PageHeader title="الفيديو التعريفي">جولة مرئية في استراحة الجود.</PageHeader>
       <section className="mx-auto max-w-5xl px-4 py-16">
-        <VideoBlock url={media.videoUrl} poster={media.heroImageUrl} />
+        <VideoBlock url={media.videoUrl} poster={media.heroImageUrl} video={media.video} />
       </section>
     </>
   );

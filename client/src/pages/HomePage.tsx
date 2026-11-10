@@ -164,7 +164,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-5xl px-4">
           <SectionHeading eyebrow="جولة مرئية" title="الفيديو التعريفي" tone="dark" center />
           <Reveal className="mt-12">
-            <VideoBlock url={site.media.videoUrl} poster={site.media.heroImageUrl} />
+            <VideoBlock url={site.media.videoUrl} poster={site.media.heroImageUrl} video={site.media.video} />
           </Reveal>
         </div>
       </section>

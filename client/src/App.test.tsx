@@ -65,6 +65,12 @@ describe("home page", () => {
     expect(document.head.querySelector('link[rel="apple-touch-icon"]')).toHaveAttribute("href", "/api/public/site-images/icon?v=2");
   });
 
+  it("plays the intro video from a YouTube link", async () => {
+    renderApp("/video", { site: { ...siteFixture, media: { ...siteFixture.media, video: { kind: "iframe", src: "https://www.youtube-nocookie.com/embed/abc123def?rel=0" } } } });
+    const frame = await screen.findByTitle("الفيديو التعريفي لاستراحة الجود");
+    expect(frame).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc123def?rel=0");
+  });
+
   it("shows check-in and check-out times from settings", async () => {
     renderApp("/");
     await screen.findByRole("heading", { level: 1 });

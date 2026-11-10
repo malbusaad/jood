@@ -2,7 +2,7 @@ import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
-import { fullNameSchema, getSetting, getSettings, nationalIdSchema, phoneSchema, publicSettingKeys } from "../settings/registry.js";
+import { fullNameSchema, getSetting, getSettings, nationalIdSchema, phoneSchema, publicSettingKeys, videoEmbed } from "../settings/registry.js";
 import type { SecretBox } from "../lib/secretBox.js";
 import { addDays, eachDate, isoDate, todayInRiyadh } from "../lib/dates.js";
 import { HttpError, parse } from "../lib/http.js";
@@ -96,6 +96,7 @@ export function publicRouter(
           return hero ? mediaUrl(hero.storageKey) : null;
         })(),
         videoUrl: media.find((m) => m.kind === "VIDEO") ? mediaUrl(media.find((m) => m.kind === "VIDEO")!.storageKey) : null,
+        video: settings.introVideo.url ? videoEmbed(settings.introVideo.url) : null,
         gallery: media
           .filter((m) => m.kind === "IMAGE")
           .map((m) => ({ url: mediaUrl(m.storageKey), alt: m.alt ?? "", amenityId: m.amenityId })),

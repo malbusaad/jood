@@ -189,6 +189,19 @@ export const settingDefinitions = {
       mobile: "animate",
     },
   },
+  /** الفيديو التعريفي: رابط YouTube أو Vimeo (أو رابط ملف ‎.mp4 مباشر) */
+  introVideo: {
+    public: true,
+    schema: z.object({
+      url: z
+        .url()
+        .max(500)
+        .refine((u) => u.startsWith("https://"), "يجب أن يبدأ الرابط بـ https://")
+        .refine((u) => videoEmbed(u) !== null, "ضع رابط فيديو من YouTube أو Vimeo أو رابط ملف ‎.mp4")
+        .nullable(),
+    }),
+    initial: { url: null },
+  },
   /** ترخيص وزارة السياحة: لا يظهر إلا بعد إدخال رقم الترخيص الحقيقي وتفعيله. الشعار يُرفع من لوحة الإدارة. */
   tourismLicense: {
     public: true,
@@ -371,4 +384,22 @@ export async function getSettings<K extends SettingKey>(db: Db, keys: readonly K
       return [k, parsed?.success ? parsed.data : def.initial];
     }),
   ) as { [P in K]: SettingValue<P> };
+}
+
+/** Turns a YouTube / Vimeo / .mp4 link into what the page shows. null = not a supported video link. */
+export function videoEmbed(url: string): { kind: "iframe" | "file"; src: string } | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.replace(/^www\.|^m\./, "");
+  const id =
+    host === "youtu.be" ? u.pathname.slice(1) : host === "youtube.com" ? (u.searchParams.get("v") ?? u.pathname.match(/^\/(?:shorts|embed|live)\/([^/?]+)/)?.[1] ?? null) : null;
+  if (id && /^[\w-]{6,20}$/.test(id)) return { kind: "iframe", src: `https://www.youtube-nocookie.com/embed/${id}?rel=0` };
+  const vimeo = host === "vimeo.com" ? u.pathname.match(/^\/(\d{5,12})/)?.[1] : null;
+  if (vimeo) return { kind: "iframe", src: `https://player.vimeo.com/video/${vimeo}` };
+  if (/\.mp4$/i.test(u.pathname)) return { kind: "file", src: u.href };
+  return null;
 }

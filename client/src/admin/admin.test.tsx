@@ -645,3 +645,30 @@ describe("previous records import, expenses and reports", () => {
     expect(screen.getByRole("row", { name: /أبريل/ })).toHaveTextContent("1,500 ريال");
   });
 });
+
+describe("photos and video", () => {
+  it("lists photos, sets the main photo, and saves the video link", async () => {
+    const photos = [
+      { id: "p1", url: "/api/media/photo-1.jpg", alt: "المجلس", isHero: false, sizeBytes: 1000 },
+      { id: "p2", url: "/api/media/photo-2.jpg", alt: null, isHero: true, sizeBytes: 1000 },
+    ];
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/media": () => [200, { items: photos }],
+        "GET /api/admin/settings": () => [200, { introVideo: { url: null } }],
+        "PATCH /api/admin/media/p1": () => [200, { ...photos[0], isHero: true }],
+        "PUT /api/admin/settings/introVideo": (body) => [200, { key: "introVideo", value: body }],
+      },
+      OWNER,
+    );
+    renderAt("/admin/media");
+    expect(await screen.findByRole("img", { name: "المجلس" })).toHaveAttribute("src", "/api/media/photo-1.jpg");
+    expect(screen.getAllByText("الرئيسية", { selector: "span" }).length).toBe(1);
+    expect(screen.getByRole("button", { name: "جعل الصورة 2 الرئيسية" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "جعل الصورة 1 الرئيسية" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH" && (c.body as { isHero?: boolean }).isHero)).toBe(true));
+    fireEvent.change(screen.getByLabelText("رابط الفيديو"), { target: { value: "https://youtu.be/abc123def" } });
+    fireEvent.click(screen.getByRole("button", { name: "حفظ" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/admin/settings/introVideo")?.body).toEqual({ url: "https://youtu.be/abc123def" }));
+  });
+});
