@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useUser } from "../auth";
-import { LicenseLogoCard, TickerEditor, type TickerValue } from "./SiteExtrasSettings";
+import { ImageUploadCard, LicenseLogoCard, TickerEditor, type TickerValue } from "./SiteExtrasSettings";
 import { Button, Card, ErrorNote, Field, Loading, PageTitle, inputClass, useApi, useMutation } from "../ui";
 
 type Json = Record<string, unknown>;
@@ -390,7 +390,7 @@ function LockStatusCard() {
 }
 
 const TABS = [
-  { id: "site", label: "الموقع", keys: ["general", "stay", "contact", "gathern"] },
+  { id: "site", label: "الموقع", keys: ["general", "siteLogo", "siteIcon", "stay", "contact", "gathern"] },
   { id: "banner", label: "الشريط والترخيص", keys: ["ticker", "tourismLicense", "licenseLogo"] },
   { id: "booking", label: "الحجز والدفع", keys: ["bookingPolicy", "bank", "cancellationPolicy"] },
   { id: "rules", label: "التعليمات والأسئلة", keys: ["houseRules", "faqs"] },
@@ -432,6 +432,12 @@ export default function SettingsPage() {
             if (key === "lockStatus") return owner ? <LockStatusCard key={key} /> : null;
             if (key === "ticker") return <TickerEditor key={key} initial={data.ticker as TickerValue} canEdit={owner} />;
             if (key === "licenseLogo") return <LicenseLogoCard key={key} canEdit={owner} />;
+            if (key === "siteLogo")
+              return <ImageUploadCard key={key} canEdit={owner} title="شعار الموقع" noun="الشعار" endpoint="/api/admin/site-images/logo" alt="شعار الموقع الحالي"
+                intro="يظهر أعلى كل الصفحات بجانب اسم الاستراحة. الأفضل PNG بخلفية شفافة وارتفاع 200 بكسل تقريبًا (حتى 512 كيلوبايت)." />;
+            if (key === "siteIcon")
+              return <ImageUploadCard key={key} canEdit={owner} square title="أيقونة الموقع" noun="الأيقونة" endpoint="/api/admin/site-images/icon" alt="أيقونة الموقع الحالية"
+                intro="تظهر في تبويب المتصفح وعند إضافة الموقع للشاشة الرئيسية في الجوال. الأفضل صورة مربعة PNG بمقاس 512×512 (حتى 512 كيلوبايت)." />;
             const def = SECTIONS.find((s) => s.key === key)!;
             if (def.ownerOnly && !owner) return null;
             return <Section key={key} def={def} initial={data[key]} canEdit={owner} />;

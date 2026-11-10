@@ -13,7 +13,8 @@ import type { WhatsAppSender } from "../../services/notifications.js";
 import type { LockClient } from "../../services/ttlock.js";
 import type { SecretBox } from "../../lib/secretBox.js";
 import { getSetting } from "../../settings/registry.js";
-import { deleteLogo, logoVersion, saveLogo } from "../../services/licenseLogo.js";
+import { SITE_IMAGES, deleteLogo, isSiteImageSlot, logoVersion, saveLogo } from "../../services/licenseLogo.js";
+import { HttpError } from "../../lib/http.js";
 import { audit } from "../../lib/audit.js";
 import { parse } from "../../lib/http.js";
 import { z } from "zod";
@@ -53,6 +54,30 @@ export function adminRouter(
   router.delete("/license-logo", requireRole("OWNER"), async (req, res) => {
     await deleteLogo(db);
     await audit(db, req, { action: "license_logo.delete", entityType: "setting", entityId: "tourismLicenseLogo" });
+    res.status(204).end();
+  });
+
+  /** Site logo and browser/home-screen icon, uploaded by the owner (same rules as the ministry logo). */
+  const slotOf = (raw: string) => {
+    if (!isSiteImageSlot(raw)) throw new HttpError(404, "غير موجود");
+    return raw;
+  };
+  router.get("/site-images/:slot", async (req, res) => {
+    const slot = slotOf(String(req.params.slot));
+    const v = await logoVersion(db, SITE_IMAGES[slot].key);
+    res.json({ url: v ? `/api/public/site-images/${slot}?v=${v}` : null });
+  });
+  router.put("/site-images/:slot", requireRole("OWNER"), async (req, res) => {
+    const slot = slotOf(String(req.params.slot));
+    const { data } = parse(z.object({ data: z.string().min(1).max(800_000) }), req.body);
+    const saved = await saveLogo(db, data, SITE_IMAGES[slot].key);
+    await audit(db, req, { action: "site_image.upload", entityType: "setting", entityId: SITE_IMAGES[slot].key, details: { size: saved.size, mime: saved.mime } });
+    res.json({ url: `/api/public/site-images/${slot}?v=${saved.version}` });
+  });
+  router.delete("/site-images/:slot", requireRole("OWNER"), async (req, res) => {
+    const slot = slotOf(String(req.params.slot));
+    await deleteLogo(db, SITE_IMAGES[slot].key);
+    await audit(db, req, { action: "site_image.delete", entityType: "setting", entityId: SITE_IMAGES[slot].key });
     res.status(204).end();
   });
 

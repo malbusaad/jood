@@ -103,3 +103,33 @@ describe("Ministry of Tourism licence", () => {
     expect((await request(app).get("/api/public/license-logo")).status).toBe(404);
   });
 });
+
+describe("site logo and icon", () => {
+  it("lets the owner upload the logo and the icon; the site uses them", async () => {
+    const { agent } = await signedIn(app);
+    expect((await request(app).get("/api/public/site")).body.media).toMatchObject({ logoUrl: null, iconUrl: null });
+    const logo = await agent.put("/api/admin/site-images/logo").send({ data: PNG.toString("base64") });
+    expect(logo.status).toBe(200);
+    const icon = await agent.put("/api/admin/site-images/icon").send({ data: JPG.toString("base64") });
+    const media = (await request(app).get("/api/public/site")).body.media;
+    expect(media.logoUrl).toBe(logo.body.url);
+    expect(media.iconUrl).toBe(icon.body.url);
+    expect(media.logoUrl).toMatch(/^\/api\/public\/site-images\/logo\?v=[0-9a-f]{16}$/);
+    const img = await request(app).get("/api/public/site-images/icon");
+    expect(img.headers["content-type"]).toBe("image/jpeg");
+    // Each image is separate from the ministry logo.
+    expect((await request(app).get("/api/public/license-logo")).status).toBe(404);
+    await agent.delete("/api/admin/site-images/logo").expect(204);
+    expect((await request(app).get("/api/public/site")).body.media.logoUrl).toBeNull();
+  });
+
+  it("refuses SVG, unknown slots and non-owners", async () => {
+    const { agent } = await signedIn(app);
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString("base64");
+    expect((await agent.put("/api/admin/site-images/icon").send({ data: svg })).status).toBe(400);
+    expect((await agent.put("/api/admin/site-images/other").send({ data: PNG.toString("base64") })).status).toBe(404);
+    expect((await request(app).get("/api/public/site-images/other")).status).toBe(404);
+    const staff = (await signedIn(app, "STAFF")).agent;
+    expect((await staff.put("/api/admin/site-images/logo").send({ data: PNG.toString("base64") })).status).toBe(403);
+  });
+});

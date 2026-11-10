@@ -301,6 +301,24 @@ describe("settings", () => {
     expect(screen.getByRole("button", { name: /رفع الشعار/ })).toBeInTheDocument();
   });
 
+  it("uploads the site logo from the «الموقع» tab", async () => {
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/settings": () => [200, settings],
+        "GET /api/admin/site-images/logo": () => [200, { url: null }],
+        "GET /api/admin/site-images/icon": () => [200, { url: null }],
+        "PUT /api/admin/site-images/logo": () => [200, { url: "/api/public/site-images/logo?v=1" }],
+      },
+      OWNER,
+    );
+    renderAt("/admin/settings");
+    expect(await screen.findByRole("heading", { name: "أيقونة الموقع" })).toBeInTheDocument();
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "logo.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("ملف الشعار"), { target: { files: [file] } });
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.path === "/api/admin/site-images/logo")).toBe(true));
+    expect((calls.find((c) => c.method === "PUT")!.body as { data: string }).data).toMatch(/^data:image\/png;base64,/);
+  });
+
   it("saves the Gathern link", async () => {
     const calls = mockAdminApi(
       {

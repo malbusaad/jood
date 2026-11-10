@@ -60,7 +60,7 @@ export interface SiteContent {
   amenities: Amenity[];
   /** السعر الأساسي للاستراحة كاملة: 0 = الأحد ... 6 = السبت (null = لا يوجد سعر معتمد) */
   weekdayPrices: (number | null)[];
-  media: { logoUrl: string | null; heroImageUrl: string | null; videoUrl: string | null; gallery: GalleryImage[] };
+  media: { logoUrl: string | null; iconUrl?: string | null; heroImageUrl: string | null; videoUrl: string | null; gallery: GalleryImage[] };
 }
 
 export interface CalendarDay {
