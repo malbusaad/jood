@@ -200,7 +200,7 @@ async function deliver(db: PrismaClient, deps: WaDeps, messageId: string, now: D
           title: `لم يُرسل رمز الدخول ${b.reference}`,
           body: `${b.guest.name} — ${b.guest.phone}\nلم يكتمل السداد: ${paymentNote(sum)}\nأُرسل للضيف تنبيه بعدم اكتمال السداد. بعد اعتماد المبلغ أعد إرسال رسالة رمز الدخول من «أتمتة واتساب».`,
           bookingId: b.id,
-          whatsappParams: [b.reference, b.guest.name, b.guest.phone, formatDateAr(toIsoDate(b.startDate)), "لم يكتمل السداد"],
+          whatsappParams: [b.reference, b.guest.name, b.guest.phone ?? "—", formatDateAr(toIsoDate(b.startDate)), "لم يكتمل السداد"],
         },
         deps.ownerWhatsapp,
       );
@@ -215,7 +215,7 @@ async function deliver(db: PrismaClient, deps: WaDeps, messageId: string, now: D
           title: `لم يُرسل رمز الدخول ${b.reference}`,
           body: `${b.guest.name} — ${b.guest.phone}\n${code.problem}\nلم تُرسل أي رسالة برمز غير صالح. بعد إصلاحه أعد المحاولة من «أتمتة واتساب».`,
           bookingId: b.id,
-          whatsappParams: [b.reference, b.guest.name, b.guest.phone, formatDateAr(toIsoDate(b.startDate)), code.problem],
+          whatsappParams: [b.reference, b.guest.name, b.guest.phone ?? "—", formatDateAr(toIsoDate(b.startDate)), code.problem],
         },
         deps.ownerWhatsapp,
       );
@@ -230,11 +230,12 @@ async function deliver(db: PrismaClient, deps: WaDeps, messageId: string, now: D
   const preview = doorCode ? render(cfg.text, { ...vars, door_code: MASK }).text : text;
 
   if (s.whatsappAutomation.mode === "TEST") return { status: "DRY_RUN", preview };
+  if (!b.guest.phone) return { status: "SKIPPED", preview, error: "لا يوجد رقم جوال للضيف" };
   if (!deps.send) return { status: "FAILED", preview, error: "حساب واتساب غير مربوط بعد (إعدادات الخادم)" };
   if (!cfg.templateName) return { status: "FAILED", preview, error: "لم يُحدد اسم القالب المعتمد لهذه الرسالة" };
 
   try {
-    const r = await deps.send(b.guest.phone, { template: cfg.templateName, language: cfg.language, params });
+    const r = await deps.send(b.guest.phone!, { template: cfg.templateName, language: cfg.language, params });
     return { status: "SENT", preview, providerId: r.id };
   } catch (err) {
     let reason = err instanceof Error ? err.message : "unknown error";

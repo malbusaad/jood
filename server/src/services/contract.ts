@@ -155,7 +155,7 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
       reference: booking.reference,
       issueDate: formatDateAr(todayInRiyadh()),
       guestName: booking.guest.name,
-      guestPhone: booking.guest.phone,
+      guestPhone: booking.guest.phone ?? "—",
       guestIdNumber: guestIdNumber ?? "—",
       checkIn: formatTimeAr(s.stay.checkIn),
       checkOut: formatTimeAr(s.stay.checkOut),
@@ -176,5 +176,5 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
   );
   if (unknown.length) warnings.push(`متغيرات غير معروفة في نص العقد: ${unknown.map((u) => `{{${u}}}`).join("، ")}`);
 
-  return { reference: booking.reference, guestName: booking.guest.name, guestPhone: booking.guest.phone, blocks, warnings };
+  return { reference: booking.reference, guestName: booking.guest.name, guestPhone: booking.guest.phone ?? "—", blocks, warnings };
 }

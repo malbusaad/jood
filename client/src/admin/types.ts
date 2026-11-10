@@ -15,7 +15,7 @@ export type BookingStatus =
   | "REJECTED"
   | "EXPIRED"
   | "COMPLETED";
-export type Channel = "WEBSITE" | "GATHERN" | "MANUAL";
+export type Channel = "WEBSITE" | "GATHERN" | "MANUAL" | "IMPORTED";
 export type PaymentMethod = "BANK_TRANSFER" | "GATHERN" | "CASH";
 export type PaymentPurpose = "BOOKING" | "SECURITY_DEPOSIT";
 
@@ -36,7 +36,7 @@ export interface BookingSummary {
   depositAmount: string;
   createdAt: string;
   expiresAt: string | null;
-  guest: { id: string; name: string; phone: string };
+  guest: { id: string; name: string; phone: string | null };
   resources: ResourceRef[];
   paid: string;
   pendingPayments: number;
@@ -82,7 +82,7 @@ export interface BookingDetail {
   contractSentAt: string | null;
   contractAcceptedAt: string | null;
   createdAt: string;
-  guest: { id: string; name: string; phone: string; email: string | null; notes: string | null; nationalId: string | null; nationalIdMasked: string | null };
+  guest: { id: string; name: string; phone: string | null; email: string | null; notes: string | null; nationalId: string | null; nationalIdMasked: string | null };
   items: { id: string; date: string; price: string; resource: ResourceRef }[];
   payments: Payment[];
   paid: string;
@@ -145,7 +145,7 @@ export interface CalendarBooking {
   channel: Channel;
   startDate: string;
   endDate: string;
-  guest: { name: string; phone: string };
+  guest: { name: string; phone: string | null };
   kind: "FULL" | "PART";
   resources: ResourceRef[];
 }
@@ -153,7 +153,7 @@ export interface CalendarBooking {
 export interface Guest {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null;
   email: string | null;
   notes: string | null;
   nationalIdMasked: string | null;

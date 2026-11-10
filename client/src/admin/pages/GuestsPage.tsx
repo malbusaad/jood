@@ -30,7 +30,7 @@ export default function GuestsPage() {
                 <Link to={`/admin/guests/${g.id}`} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 hover:bg-jood-beige/50">
                   <span>
                     <span className="font-medium">{g.name}</span>
-                    <span dir="ltr" className="ms-2 text-sm text-jood-ink/60">+{g.phone}</span>
+                    <span dir="ltr" className="ms-2 text-sm text-jood-ink/60">{g.phone ? `+${g.phone}` : "—"}</span>
                     {g.nationalIdMasked && <span dir="ltr" className="ms-2 text-xs text-jood-ink/50">ID {g.nationalIdMasked}</span>}
                   </span>
                   <span className="text-sm text-jood-ink/60">

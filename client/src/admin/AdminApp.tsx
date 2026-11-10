@@ -21,6 +21,9 @@ const ResourcesPage = lazy(() => import("./pages/ResourcesPage"));
 const PricingPage = lazy(() => import("./pages/PricingPage"));
 const DiscountsPage = lazy(() => import("./pages/DiscountsPage"));
 const WhatsAppPage = lazy(() => import("./pages/WhatsAppPage"));
+const ExpensesPage = lazy(() => import("./pages/ExpensesPage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
+const ImportPage = lazy(() => import("./pages/ImportPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
 const AuditPage = lazy(() => import("./pages/AuditPage"));
 
@@ -62,6 +65,9 @@ export default function AdminApp() {
           <Route path="special-prices" element={<PricingPage key="special" mode="special" />} />
           <Route path="discounts" element={<DiscountsPage />} />
           <Route path="whatsapp" element={<WhatsAppPage />} />
+          <Route path="expenses" element={<ExpensesPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="import" element={<ImportPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="audit" element={<AuditPage />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />

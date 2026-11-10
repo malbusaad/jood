@@ -242,7 +242,7 @@ export async function createBooking(
         title: `طلب حجز جديد ${booking.reference}`,
         body: `${guest.name} — ${guest.phone}\n${what}\n${when}\nالمبلغ: ${booking.totalAmount.toFixed(2)} ريال${discount ? ` (بعد خصم ${discount.amount} بكود ${discount.code})` : ""}`,
         bookingId: booking.id,
-        whatsappParams: [booking.reference, guest.name, guest.phone, when, what],
+        whatsappParams: [booking.reference, guest.name, guest.phone ?? "—", when, what],
       },
       ctx.whatsapp,
     );
@@ -463,7 +463,7 @@ export async function alertUnpaidBalances(db: PrismaClient, whatsapp: WhatsAppSe
         title: `لم يكتمل السداد ${b.reference}`,
         body: `${b.guest.name} — ${b.guest.phone}\nالدخول: ${formatDateAr(toIsoDate(b.startDate))}\n${missing.join("\n")}\nرمز الباب لن يظهر للضيف حتى يكتمل السداد.`,
         bookingId: b.id,
-        whatsappParams: [b.reference, b.guest.name, b.guest.phone, formatDateAr(toIsoDate(b.startDate)), missing.join("، ")],
+        whatsappParams: [b.reference, b.guest.name, b.guest.phone ?? "—", formatDateAr(toIsoDate(b.startDate)), missing.join("، ")],
       },
       whatsapp,
     );
