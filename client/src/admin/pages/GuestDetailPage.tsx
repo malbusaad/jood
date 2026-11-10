@@ -28,7 +28,7 @@ export default function GuestDetailPage() {
         </Card>
         <Card title="البيانات">
           <dl className="space-y-2 text-sm">
-            <div><dt className="text-jood-ink/55">الجوال</dt><dd dir="ltr" className="text-end">+{g.phone}</dd></div>
+            <div><dt className="text-jood-ink/55">الجوال</dt><dd dir="ltr" className="text-end">{g.phone ? `+${g.phone}` : "—"}</dd></div>
             {g.email && <div><dt className="text-jood-ink/55">البريد</dt><dd dir="ltr" className="text-end">{g.email}</dd></div>}
           </dl>
           <Field label="رقم الهوية أو الإقامة" className="mt-4">

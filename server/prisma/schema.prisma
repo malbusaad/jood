@@ -187,7 +187,8 @@ model Guest {
   id              String   @id @default(uuid()) @db.Uuid
   name            String   @db.VarChar(120)
   /// رقم الجوال/واتساب بصيغة دولية موحدة، مثل 9665XXXXXXXX
-  phone           String   @unique @db.VarChar(20)
+  /// قد يكون فارغًا لعملاء السجل السابق الذين لم يُسجل جوالهم
+  phone           String?  @unique @db.VarChar(20)
   email           String?  @db.VarChar(254)
   /// رقم الهوية الوطنية أو الإقامة — مشفّر (AES-256-GCM)، ولا يُخزَّن نصًا صريحًا
   nationalIdEnc   String?  @map("national_id_enc")
@@ -219,6 +220,7 @@ enum BookingChannel {
   WEBSITE
   GATHERN
   MANUAL
+  IMPORTED // من السجل السابق (ملف الاستيراد)
 }
 
 model Booking {
@@ -659,4 +661,22 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+// ─────────────────────────── المصاريف ───────────────────────────
+
+model Expense {
+  id          String   @id @default(uuid()) @db.Uuid
+  title       String   @db.VarChar(200)
+  category    String   @db.VarChar(60)
+  date        DateTime @db.Date
+  amount      Decimal  @db.Decimal(10, 2)
+  notes       String?
+  /// رقم المصروف في الملف المستورد (يمنع تكراره عند إعادة الاستيراد)
+  externalRef String?  @unique @map("external_ref") @db.VarChar(40)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@map("expenses")
 }

@@ -2,8 +2,9 @@ import type { BookingDetail } from "./types";
 import { formatDateAr } from "../lib/format";
 import { money, nightsBetween } from "./ui";
 
-export function waLink(phone: string, text?: string) {
-  return `https://wa.me/${phone.replace(/\D/g, "")}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
+/** Opens WhatsApp on the guest's chat; without a number, WhatsApp asks which chat to use. */
+export function waLink(phone: string | null, text?: string) {
+  return `https://wa.me/${(phone ?? "").replace(/\D/g, "")}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
 }
 
 /** Ready-made WhatsApp messages for each step of the owner's flow. */

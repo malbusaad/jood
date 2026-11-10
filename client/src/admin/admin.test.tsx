@@ -590,3 +590,58 @@ describe("phone notifications card", () => {
     Reflect.deleteProperty(navigator, "serviceWorker");
   });
 });
+
+describe("previous records import, expenses and reports", () => {
+  const summary = {
+    bookings: 70, byStatus: { COMPLETED: 64, CONFIRMED: 5, EXPIRED: 1 }, skippedExisting: 0, expenses: 48, skippedExpenses: 0,
+    newCustomers: 58, existingCustomers: 0, bookingValueConfirmed: 54264, received: 22092, expensesTotal: 27526.24,
+    upcoming: [{ ref: "2220001", name: "ضيف قادم", dates: ["2026-11-25"], total: 900, received: 450, status: "CONFIRMED" }],
+  };
+
+  it("previews the file, then imports only after confirmation", async () => {
+    const calls = mockAdminApi(
+      {
+        "POST /api/admin/import/preview": () => [200, { summary, issues: [] }],
+        "POST /api/admin/import/commit": () => [200, { summary, issues: [] }],
+      },
+      OWNER,
+    );
+    vi.stubGlobal("confirm", () => true);
+    renderAt("/admin/import");
+    const file = new File([new Uint8Array([0x50, 0x4b, 3, 4])], "data.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    fireEvent.change(await screen.findByLabelText("ملف السجل السابق"), { target: { files: [file] } });
+    expect(await screen.findByText("المعاينة — لم يُحفظ شيء بعد")).toBeInTheDocument();
+    expect(screen.getByText(/ضيف قادم/)).toHaveTextContent("المتبقي 450 ريال");
+    expect(calls.some((c) => c.path === "/api/admin/import/commit")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "تأكيد الاستيراد" }));
+    expect(await screen.findByText(/أُضيف 70 حجزًا و48 مصروفًا/)).toBeInTheDocument();
+  });
+
+  it("adds an expense", async () => {
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/expenses": () => [200, { items: [], total: 0, categories: ["صيانة", "أخرى"] }],
+        "POST /api/admin/expenses": (body) => [201, body],
+      },
+      OWNER,
+    );
+    renderAt("/admin/expenses");
+    fireEvent.click(await screen.findByRole("button", { name: /مصروف/ }));
+    fireEvent.change(screen.getByLabelText("البند / الوصف"), { target: { value: "صيانة المكيف" } });
+    fireEvent.change(screen.getByLabelText("المبلغ (ريال)"), { target: { value: "350" } });
+    fireEvent.change(screen.getByLabelText("التصنيف", { selector: "input" }), { target: { value: "صيانة" } });
+    fireEvent.click(screen.getByRole("button", { name: "حفظ" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ title: "صيانة المكيف", category: "صيانة", amount: 350 });
+  });
+
+  it("shows the monthly report totals", async () => {
+    const months = Array.from({ length: 12 }, (_, i) => ({ month: `2026-${String(i + 1).padStart(2, "0")}`, bookings: 0, bookingValue: 0, collected: 0, expenses: 0, net: 0 }));
+    months[3] = { ...months[3]!, bookings: 5, bookingValue: 4000, collected: 1000, expenses: 2500, net: 1500 };
+    mockAdminApi({ "GET /api/admin/reports/monthly": () => [200, { year: 2026, months, total: { bookings: 5, bookingValue: 4000, collected: 1000, expenses: 2500, net: 1500 }, byCategory: { أخرى: 2500 } }] }, OWNER);
+    renderAt("/admin/reports");
+    expect(await screen.findByText("الصافي (الحجوزات − المصاريف)")).toBeInTheDocument();
+    expect(screen.getAllByText("4,000 ريال").length).toBeGreaterThan(0);
+    expect(screen.getByRole("row", { name: /أبريل/ })).toHaveTextContent("1,500 ريال");
+  });
+});

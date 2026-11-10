@@ -23,7 +23,7 @@ export const ACTION_LABEL: Record<BookingStatus, string> = {
   COMPLETED: "تم — الإقامة مكتملة",
 };
 
-export const CHANNEL: Record<Channel, string> = { WEBSITE: "الموقع", GATHERN: "جاذر إن", MANUAL: "يدوي" };
+export const CHANNEL: Record<Channel, string> = { WEBSITE: "الموقع", GATHERN: "جاذر إن", MANUAL: "يدوي", IMPORTED: "سجل سابق" };
 export const METHOD: Record<PaymentMethod, string> = { BANK_TRANSFER: "تحويل بنكي", GATHERN: "جاذر إن", CASH: "نقدًا" };
 export const PURPOSE = { BOOKING: "مبلغ الحجز", SECURITY_DEPOSIT: "التأمين" } as const;
 export const PLAN = { FULL: "كامل المبلغ مقدمًا", DEPOSIT: "عربون والباقي قبل الدخول" } as const;
