@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ImagePlus, Star, Trash2 } from "lucide-react";
 import { Button, Card, Empty, ErrorNote, Field, Loading, PageTitle, inputClass, useApi, useMutation } from "../ui";
 
-interface Photo { id: string; url: string; alt: string | null; isHero: boolean; sizeBytes: number }
+interface Photo { id: string; url: string; alt: string | null; isHero: boolean; sizeBytes: number; amenityId?: string | null }
 
 /** Shrinks a photo on the device before upload (long side ≤ 1920 px, JPEG), so uploads are fast and small. */
 async function shrink(file: File): Promise<string> {
@@ -28,6 +28,7 @@ async function shrink(file: File): Promise<string> {
 
 export default function MediaPage() {
   const { data, loading, reload } = useApi<{ items: Photo[] }>("/api/admin/media");
+  const { data: amenities } = useApi<{ id: string; name: string }[]>("/api/admin/amenities");
   const { data: settings, reload: reloadSettings } = useApi<{ introVideo: { url: string | null } }>("/api/admin/settings");
   const m = useMutation();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -65,7 +66,8 @@ export default function MediaPage() {
       </PageTitle>
       <p className="mb-4 rounded-xl bg-jood-beige px-4 py-3 text-sm leading-7">
         اختر صورًا من جوالك أو جهازك، ويمكنك اختيار عدة صور مرة واحدة. تُصغَّر تلقائيًا قبل الرفع لتكون سريعة في الموقع.
-        ★ تحدد الصورة الرئيسية التي تظهر أعلى الصفحة الرئيسية، والأسهم تغيّر ترتيبها في المعرض. اكتب وصفًا قصيرًا لكل صورة (مثل «المجلس»).
+        ★ تحدد الصورة الرئيسية التي تظهر أعلى الصفحة الرئيسية، والأسهم تغيّر ترتيبها في المعرض. اكتب وصفًا قصيرًا لكل صورة (مثل «المجلس»)،
+        واختر المرفق الذي تخصه لتظهر تحته في صفحة «المرافق والخدمات» ويمكن تصفية المعرض به.
       </p>
       {progress && <p className="mb-3 text-sm text-jood-green">{progress}</p>}
       <ErrorNote>{m.error}</ErrorNote>
@@ -88,6 +90,15 @@ export default function MediaPage() {
                     onBlur={async (e) => { const v = e.target.value.trim() || null; if (v !== p.alt) { if (await m.run(`/api/admin/media/${p.id}`, "PATCH", { alt: v })) reload(); } }}
                     className={inputClass}
                   />
+                  <select
+                    aria-label={`مرفق الصورة ${i + 1}`}
+                    value={p.amenityId ?? ""}
+                    onChange={async (e) => { if (await m.run(`/api/admin/media/${p.id}`, "PATCH", { amenityId: e.target.value || null })) reload(); }}
+                    className={inputClass}
+                  >
+                    <option value="">صورة عامة (بدون مرفق)</option>
+                    {amenities?.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
                   <div className="flex items-center justify-between">
                     <div className="flex">
                       <Button variant="ghost" aria-label={`نقل الصورة ${i + 1} للأمام`} disabled={i === 0} onClick={() => move(i, -1)}><ArrowUp className="size-4" /></Button>

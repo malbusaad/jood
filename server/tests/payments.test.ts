@@ -202,7 +202,7 @@ describe("unpaid balance alert", () => {
     const c = await confirm(agent, booking.id);
     expect(c.body.error).toBeUndefined();
     const paidUp = await book({}, addDays(today, 1));
-    await pay(agent, paidUp.booking.id, 950).expect(201);
+    await pay(agent, paidUp.booking.id, Number(paidUp.booking.totalAmount)).expect(201); // 950 or 1,200 depending on the weekday
     await pay(agent, paidUp.booking.id, 500, "SECURITY_DEPOSIT").expect(201);
     await confirm(agent, paidUp.booking.id).expect(200);
     await db.notification.deleteMany();

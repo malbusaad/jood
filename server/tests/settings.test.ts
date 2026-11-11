@@ -116,3 +116,24 @@ describe("amenities admin", () => {
     expect((await agent.post("/api/admin/amenities").send({ slug: "tent", name: "خيمة" })).status).toBe(409);
   });
 });
+
+describe("editing keeps what was not sent", () => {
+  it("a quick on/off toggle of an amenity never resets its other fields", async () => {
+    const app = makeApp();
+    const { agent } = await signedIn(app);
+    const a = (await agent.post("/api/admin/amenities").send({ slug: "pool-x", name: "مرفق تجربة", capacityText: "10 أشخاص", note: "مكيف", icon: "majlis", category: "SERVICE", sortOrder: 7, description: "وصف" })).body;
+    await agent.patch(`/api/admin/amenities/${a.id}`).send({ available: false }).expect(200);
+    await agent.patch(`/api/admin/amenities/${a.id}`).send({ visible: false }).expect(200);
+    const after = await db.amenity.findUniqueOrThrow({ where: { id: a.id } });
+    expect(after).toMatchObject({ capacityText: "10 أشخاص", note: "مكيف", icon: "majlis", category: "SERVICE", sortOrder: 7, description: "وصف", available: false, visible: false });
+  });
+
+  it("the same for booking parts", async () => {
+    const app = makeApp();
+    const { agent } = await signedIn(app);
+    const majlis = await db.amenity.findUniqueOrThrow({ where: { slug: "majlis" } });
+    const p = (await agent.post("/api/admin/resources").send({ slug: "part-x", name: "جزء تجربة", description: "وصف الجزء", sortOrder: 9, amenityIds: [majlis.id] })).body;
+    await agent.patch(`/api/admin/resources/${p.id}`).send({ active: false }).expect(200);
+    expect(await db.bookingResource.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ description: "وصف الجزء", sortOrder: 9, active: false });
+  });
+});

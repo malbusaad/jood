@@ -6,18 +6,34 @@ import { audit } from "../../lib/audit.js";
 
 const iconNames = ["tent", "majlis", "dining", "outdoor", "kitchen", "restroom", "volleyball", "coffee", "kids", "wifi"] as const;
 
-const amenityInput = z.object({
+// Field rules shared by «create» and «edit». Defaults apply only when creating: an edit changes
+// only the fields it sends (a quick on/off toggle must never reset the others).
+const amenityFields = {
   slug: z.string().regex(/^[a-z0-9-]{2,60}$/, "المعرّف بالإنجليزية الصغيرة والأرقام والشرطة فقط"),
   name: z.string().trim().min(1).max(120),
-  description: z.string().trim().max(2000).nullable().default(null),
-  capacityText: z.string().trim().max(80).nullable().default(null),
-  capacityMax: z.number().int().positive().max(1000).nullable().default(null),
-  note: z.string().trim().max(120).nullable().default(null),
-  icon: z.enum(iconNames).default("outdoor"),
-  sortOrder: z.number().int().min(0).max(10000).default(0),
-  visible: z.boolean().default(true),
-  available: z.boolean().default(true),
+  description: z.string().trim().max(2000).nullable(),
+  capacityText: z.string().trim().max(80).nullable(),
+  capacityMax: z.number().int().positive().max(1000).nullable(),
+  note: z.string().trim().max(120).nullable(),
+  icon: z.enum(iconNames),
+  category: z.enum(["FACILITY", "SERVICE"]),
+  sortOrder: z.number().int().min(0).max(10000),
+  visible: z.boolean(),
+  available: z.boolean(),
+};
+const amenityInput = z.object({
+  ...amenityFields,
+  description: amenityFields.description.default(null),
+  capacityText: amenityFields.capacityText.default(null),
+  capacityMax: amenityFields.capacityMax.default(null),
+  note: amenityFields.note.default(null),
+  icon: amenityFields.icon.default("outdoor"),
+  category: amenityFields.category.default("FACILITY"),
+  sortOrder: amenityFields.sortOrder.default(0),
+  visible: amenityFields.visible.default(true),
+  available: amenityFields.available.default(true),
 });
+const amenityPatch = z.object(amenityFields).partial();
 
 export function amenitiesRouter(db: PrismaClient) {
   const router = Router();
@@ -41,7 +57,7 @@ export function amenitiesRouter(db: PrismaClient) {
 
   router.patch("/:id", async (req, res) => {
     const { id } = parse(uuidParam, req.params);
-    const data = parse(amenityInput.partial(), req.body);
+    const data = parse(amenityPatch, req.body);
     const amenity = await db.amenity.update({ where: { id }, data });
     await audit(db, req, { action: "amenity.update", entityType: "amenity", entityId: id, details: data });
     res.json(amenity);

@@ -4,15 +4,23 @@ import type { PrismaClient } from "@prisma/client";
 import { HttpError, parse, uuidParam } from "../../lib/http.js";
 import { audit } from "../../lib/audit.js";
 
-const partInput = z.object({
+// Defaults apply only when creating; an edit changes only the fields it sends.
+const partFields = {
   slug: z.string().regex(/^[a-z0-9-]{2,60}$/, "المعرّف بالإنجليزية الصغيرة والأرقام والشرطة فقط"),
   name: z.string().trim().min(1).max(120),
-  description: z.string().trim().max(2000).nullable().default(null),
-  active: z.boolean().default(true),
-  sortOrder: z.number().int().min(0).max(10000).default(0),
+  description: z.string().trim().max(2000).nullable(),
+  active: z.boolean(),
+  sortOrder: z.number().int().min(0).max(10000),
   /** المرافق التي يشملها الجزء (المرافق التي لا تنفصل تُجمع في جزء واحد) */
   amenityIds: z.array(z.uuid()).min(1, "اختر مرفقًا واحدًا على الأقل").max(50),
+};
+const partInput = z.object({
+  ...partFields,
+  description: partFields.description.default(null),
+  active: partFields.active.default(true),
+  sortOrder: partFields.sortOrder.default(0),
 });
+const partPatch = z.object(partFields).partial();
 
 const conflictInput = z.object({
   resourceAId: z.uuid(),
@@ -50,7 +58,7 @@ export function resourcesRouter(db: PrismaClient) {
 
   router.patch("/:id", async (req, res) => {
     const { id } = parse(uuidParam, req.params);
-    const { amenityIds, ...data } = parse(partInput.partial(), req.body);
+    const { amenityIds, ...data } = parse(partPatch, req.body);
     const existing = await db.bookingResource.findUnique({ where: { id } });
     if (!existing) throw new HttpError(404, "الجزء غير موجود");
     if (existing.kind === "FULL" && amenityIds) {

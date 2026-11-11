@@ -54,7 +54,7 @@ export function publicRouter(
       db.amenity.findMany({
         where: { visible: true },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-        select: { id: true, slug: true, name: true, description: true, capacityText: true, note: true, icon: true, available: true },
+        select: { id: true, slug: true, name: true, description: true, capacityText: true, note: true, icon: true, category: true, available: true },
       }),
       db.bookingResource.findFirst({
         where: { kind: "FULL", active: true },

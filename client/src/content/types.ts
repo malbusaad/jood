@@ -21,6 +21,8 @@ export interface Amenity {
   capacityText: string | null;
   note: string | null;
   icon: AmenityIconName;
+  /** مرفق أو خدمة */
+  category?: "FACILITY" | "SERVICE";
   available: boolean;
 }
 

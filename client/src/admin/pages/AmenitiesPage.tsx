@@ -12,6 +12,7 @@ interface Amenity {
   capacityMax: number | null;
   note: string | null;
   icon: string;
+  category?: "FACILITY" | "SERVICE";
   sortOrder: number;
   visible: boolean;
   available: boolean;
@@ -22,7 +23,7 @@ const ICONS: [string, string][] = [
   ["restroom", "دورات مياه"], ["volleyball", "ملعب"], ["coffee", "قهوة"], ["kids", "ألعاب أطفال"], ["wifi", "إنترنت"],
 ];
 
-const empty = { slug: "", name: "", description: "", capacityText: "", note: "", icon: "outdoor", sortOrder: 100, visible: true, available: true };
+const empty = { slug: "", name: "", description: "", capacityText: "", note: "", icon: "outdoor", category: "FACILITY" as "FACILITY" | "SERVICE", sortOrder: 100, visible: true, available: true };
 
 export default function AmenitiesPage() {
   const user = useUser();
@@ -39,6 +40,7 @@ export default function AmenitiesPage() {
       capacityText: editing.capacityText || null,
       note: editing.note || null,
       icon: editing.icon,
+      category: editing.category,
       sortOrder: Number(editing.sortOrder),
       visible: editing.visible,
       available: editing.available,
@@ -85,6 +87,12 @@ export default function AmenitiesPage() {
                 {ICONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </Field>
+            <Field label="النوع" hint="يظهر في قسم «المرافق» أو «الخدمات»">
+              <select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value as "FACILITY" | "SERVICE" })} className={inputClass}>
+                <option value="FACILITY">مرفق</option>
+                <option value="SERVICE">خدمة</option>
+              </select>
+            </Field>
             <Field label="ترتيب الظهور"><input type="number" value={editing.sortOrder} onChange={(e) => setEditing({ ...editing, sortOrder: Number(e.target.value) })} className={inputClass} /></Field>
             <Field label="الوصف (اختياري)" className="md:col-span-2"><textarea rows={2} value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} className={inputClass} /></Field>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editing.available} onChange={(e) => setEditing({ ...editing, available: e.target.checked })} className="size-4 accent-jood-green" /> متاح</label>
@@ -107,6 +115,7 @@ export default function AmenitiesPage() {
                 <div>
                   <span className={`font-medium ${a.visible ? "" : "text-jood-ink/40"}`}>{a.name}</span>
                   <span className="ms-2 text-sm text-jood-ink/60">{[a.capacityText, a.note].filter(Boolean).join(" · ")}</span>
+                  {a.category === "SERVICE" && <span className="ms-2 rounded-full bg-jood-gold/15 px-2 py-0.5 text-xs">خدمة</span>}
                   {!a.available && <span className="ms-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900">غير متاح</span>}
                   {!a.visible && <span className="ms-2 rounded-full bg-stone-200 px-2 py-0.5 text-xs">مخفي</span>}
                 </div>
@@ -117,7 +126,7 @@ export default function AmenitiesPage() {
                   <Button variant="ghost" aria-label={a.visible ? `إخفاء ${a.name}` : `إظهار ${a.name}`} onClick={() => toggle(a, "visible")}>
                     {a.visible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
                   </Button>
-                  <Button variant="ghost" aria-label={`تعديل ${a.name}`} onClick={() => setEditing({ id: a.id, slug: a.slug, name: a.name, description: a.description ?? "", capacityText: a.capacityText ?? "", note: a.note ?? "", icon: a.icon, sortOrder: a.sortOrder, visible: a.visible, available: a.available })}>
+                  <Button variant="ghost" aria-label={`تعديل ${a.name}`} onClick={() => setEditing({ id: a.id, slug: a.slug, name: a.name, description: a.description ?? "", capacityText: a.capacityText ?? "", note: a.note ?? "", icon: a.icon, category: a.category ?? "FACILITY", sortOrder: a.sortOrder, visible: a.visible, available: a.available })}>
                     <Pencil className="size-4" />
                   </Button>
                   {user.role === "OWNER" && (

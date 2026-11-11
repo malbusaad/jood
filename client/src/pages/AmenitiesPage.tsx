@@ -1,16 +1,47 @@
+import { Link } from "react-router";
+import { Images } from "lucide-react";
 import PageHeader from "../components/PageHeader";
 import AmenityGrid from "../components/AmenityGrid";
+import SectionHeading from "../components/SectionHeading";
 import { useSiteContent } from "../hooks/useSiteContent";
 
 export default function AmenitiesPage() {
   const site = useSiteContent();
+  const facilities = site.amenities.filter((a) => a.category !== "SERVICE");
+  const services = site.amenities.filter((a) => a.category === "SERVICE");
+  const photoCounts = site.media.gallery.reduce<Record<string, number>>((acc, g) => {
+    if (g.amenityId) acc[g.amenityId] = (acc[g.amenityId] ?? 0) + 1;
+    return acc;
+  }, {});
   return (
     <>
-      <PageHeader title="المرافق">
-        تعرّف على مرافق استراحة الجود وسعة كل منها. قد تتغير إتاحة بعض المرافق حسب الموسم.
-      </PageHeader>
-      <section className="mx-auto max-w-6xl px-4 py-16">
-        <AmenityGrid amenities={site.amenities} />
+      <PageHeader title="المرافق والخدمات">مرافق متعددة وخدمات تجعل إقامتك استثنائية ومميزة.</PageHeader>
+      <section className="mx-auto max-w-6xl space-y-16 px-4 py-16">
+        <div>
+          <SectionHeading eyebrow="المرافق" title="مساحات لكل مناسبة">
+            سعة كل مرفق موضحة. قد تتغير إتاحة بعض المرافق حسب الموسم.
+          </SectionHeading>
+          <div className="mt-10">
+            <AmenityGrid amenities={facilities} photoCounts={photoCounts} />
+          </div>
+        </div>
+        {services.length > 0 && (
+          <div>
+            <SectionHeading eyebrow="الخدمات" title="خدمات تجعل إقامتك أسهل" />
+            <div className="mt-10">
+              <AmenityGrid amenities={services} photoCounts={photoCounts} />
+            </div>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center justify-center gap-3 rounded-3xl bg-jood-green-950 px-6 py-10 text-center text-jood-beige">
+          <p className="w-full font-display text-2xl">شاهد الاستراحة قبل أن تحجز</p>
+          <Link to="/gallery" className="inline-flex items-center gap-2 rounded-full border border-jood-gold/60 px-6 py-3 transition hover:bg-white/5">
+            <Images aria-hidden className="size-4" /> معرض الصور
+          </Link>
+          <Link to="/booking" className="rounded-full bg-jood-gold px-8 py-3 font-medium text-jood-green-950 transition hover:bg-jood-gold-light">
+            احجز الآن
+          </Link>
+        </div>
       </section>
     </>
   );

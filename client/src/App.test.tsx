@@ -191,6 +191,45 @@ describe("contact page", () => {
   it("shows WhatsApp once the owner adds it", async () => {
     renderApp("/contact", { site: { ...siteFixture, contact: { ...siteFixture.contact, whatsapp: "966501234567" } } });
     await screen.findByRole("heading", { level: 1 });
-    expect(screen.getByRole("link", { name: /واتساب/ })).toHaveAttribute("href", "https://wa.me/966501234567");
+    expect(within(screen.getByRole("main")).getByRole("link", { name: /واتساب/ })).toHaveAttribute("href", "https://wa.me/966501234567");
+  });
+});
+
+describe("easier visit and booking", () => {
+  it("shows a booking bar with a WhatsApp question button on every page except the booking page", async () => {
+    renderApp("/amenities", { site: { ...siteFixture, contact: { ...siteFixture.contact, whatsapp: "966501234567" } } });
+    await screen.findByRole("heading", { level: 1 });
+    const wa = screen.getByRole("link", { name: "استفسار عبر واتساب" });
+    expect(wa.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/966501234567\?text=/);
+    expect(screen.getAllByRole("link", { name: "احجز الآن" }).some((l) => l.closest(".fixed"))).toBe(true);
+  });
+
+  it("splits amenities and services, and links to their photos in the gallery", async () => {
+    const site = {
+      ...siteFixture,
+      amenities: [
+        { ...siteFixture.amenities[0]!, id: "a1", category: "FACILITY" as const },
+        { id: "s1", slug: "wifi", name: "الإنترنت", description: null, capacityText: null, note: "عالي السرعة", icon: "wifi" as const, category: "SERVICE" as const, available: true },
+      ],
+      media: { ...siteFixture.media, gallery: [{ url: "/api/media/p1.jpg", alt: "الخيمة", amenityId: "a1" }, { url: "/api/media/p2.jpg", alt: "عام", amenityId: null }] },
+    };
+    renderApp("/amenities", { site });
+    expect(await screen.findByRole("heading", { level: 1, name: "المرافق والخدمات" })).toBeInTheDocument();
+    expect(screen.getByText("مرافق متعددة وخدمات تجعل إقامتك استثنائية ومميزة.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "خدمات تجعل إقامتك أسهل" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /الصور \(1\)/ })).toHaveAttribute("href", "/gallery?amenity=a1");
+    expect(within(screen.getByRole("main")).getByRole("link", { name: "معرض الصور" })).toHaveAttribute("href", "/gallery");
+  });
+
+  it("filters the gallery by amenity", async () => {
+    const site = {
+      ...siteFixture,
+      amenities: [{ ...siteFixture.amenities[0]!, id: "a1" }],
+      media: { ...siteFixture.media, gallery: [{ url: "/api/media/p1.jpg", alt: "الخيمة", amenityId: "a1" }, { url: "/api/media/p2.jpg", alt: "عام", amenityId: null }] },
+    };
+    renderApp("/gallery?amenity=a1", { site });
+    expect(await screen.findByRole("img", { name: "الخيمة" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "عام" })).toBeNull();
+    expect(screen.getByRole("link", { name: "الكل" })).toHaveAttribute("href", "/gallery");
   });
 });
