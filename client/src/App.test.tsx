@@ -114,8 +114,20 @@ describe("routing", () => {
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("الصفحة غير موجودة");
   });
 
-  it("defines all ten public catalog pages", () => {
-    expect(publicPages).toHaveLength(10);
+  it("defines the nine public catalog pages (prices and booking are one page)", () => {
+    expect(publicPages).toHaveLength(9);
+    expect(publicPages.find((p) => p.path === "/booking")?.label).toBe("الأسعار والحجز");
+    expect(publicPages.some((p) => p.path === "/pricing")).toBe(false);
+  });
+
+  it("sends the old prices link to the prices-and-booking page, which shows the prices first", async () => {
+    renderApp("/pricing");
+    expect(await screen.findByRole("heading", { level: 1, name: "الأسعار والحجز" })).toBeInTheDocument();
+    const prices = screen.getByRole("list", { name: "أسعار الاستراحة كاملة لليوم" });
+    expect(prices).toHaveTextContent("الأحد إلى الأربعاء");
+    expect(prices).toHaveTextContent("950");
+    expect(prices).toHaveTextContent("1,200");
+    expect(screen.getByText("ملاحظات على الأسعار")).toBeInTheDocument();
   });
 });
 

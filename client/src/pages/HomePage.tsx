@@ -125,7 +125,7 @@ export default function HomePage() {
               <PricingCards weekdayPrices={site.weekdayPrices} />
             </div>
             <div className="mt-8">
-              <MoreLink to="/pricing">تفاصيل الأسعار</MoreLink>
+              <MoreLink to="/booking">الأسعار والحجز</MoreLink>
             </div>
           </div>
           {/* التقويم يظهر في صفحة الحجز فقط */}
