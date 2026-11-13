@@ -17,6 +17,7 @@ import {
   Wallet,
   BarChart3,
   FileUp,
+  Images,
   Sofa,
   Tag,
   Users,
@@ -35,23 +36,56 @@ interface NavItem {
   ownerOnly?: boolean;
 }
 
-const nav: NavItem[] = [
-  { to: "/admin", label: "الرئيسية", Icon: LayoutDashboard },
-  { to: "/admin/bookings", label: "الحجوزات", Icon: ClipboardList },
-  { to: "/admin/calendar", label: "التقويم", Icon: CalendarDays },
-  { to: "/admin/guests", label: "الضيوف", Icon: Users },
-  { to: "/admin/amenities", label: "المرافق", Icon: Sofa },
-  { to: "/admin/resources", label: "الأجزاء والتعارض", Icon: BedDouble, ownerOnly: true },
-  { to: "/admin/pricing", label: "الأسعار الأساسية", Icon: Tag, ownerOnly: true },
-  { to: "/admin/special-prices", label: "الأسعار الخاصة والمواسم", Icon: CalendarHeart, ownerOnly: true },
-  { to: "/admin/discounts", label: "الخصومات وأكواد الخصم", Icon: TicketPercent, ownerOnly: true },
-  { to: "/admin/whatsapp", label: "أتمتة واتساب", Icon: MessageCircle, ownerOnly: true },
-  { to: "/admin/expenses", label: "المصاريف", Icon: Wallet, ownerOnly: true },
-  { to: "/admin/reports", label: "التقارير المالية", Icon: BarChart3, ownerOnly: true },
-  { to: "/admin/import", label: "استيراد السجل السابق", Icon: FileUp, ownerOnly: true },
-  { to: "/admin/settings", label: "الإعدادات", Icon: Settings },
-  { to: "/admin/users", label: "الحسابات", Icon: UserCog, ownerOnly: true },
-  { to: "/admin/audit", label: "سجل العمليات", Icon: ShieldCheck, ownerOnly: true },
+/** The menu in groups, so each task is easy to find. */
+const groups: { title: string | null; items: NavItem[] }[] = [
+  { title: null, items: [{ to: "/admin", label: "الرئيسية", Icon: LayoutDashboard }] },
+  {
+    title: "الحجوزات",
+    items: [
+      { to: "/admin/bookings", label: "الحجوزات", Icon: ClipboardList },
+      { to: "/admin/calendar", label: "التقويم", Icon: CalendarDays },
+      { to: "/admin/guests", label: "الضيوف", Icon: Users },
+    ],
+  },
+  {
+    title: "الأسعار والعروض",
+    items: [
+      { to: "/admin/pricing", label: "الأسعار الأساسية", Icon: Tag, ownerOnly: true },
+      { to: "/admin/special-prices", label: "الأسعار الخاصة والمواسم", Icon: CalendarHeart, ownerOnly: true },
+      { to: "/admin/discounts", label: "الخصومات وأكواد الخصم", Icon: TicketPercent, ownerOnly: true },
+    ],
+  },
+  {
+    title: "الاستراحة",
+    items: [
+      { to: "/admin/amenities", label: "المرافق والخدمات", Icon: Sofa },
+      { to: "/admin/media", label: "الصور والفيديو", Icon: Images, ownerOnly: true },
+      { to: "/admin/resources", label: "الأجزاء والتعارض", Icon: BedDouble, ownerOnly: true },
+    ],
+  },
+  {
+    title: "المالية",
+    items: [
+      { to: "/admin/expenses", label: "المصاريف", Icon: Wallet, ownerOnly: true },
+      { to: "/admin/reports", label: "التقارير المالية", Icon: BarChart3, ownerOnly: true },
+    ],
+  },
+  {
+    title: "التواصل",
+    items: [
+      { to: "/admin/notifications", label: "الإشعارات", Icon: Bell },
+      { to: "/admin/whatsapp", label: "أتمتة واتساب", Icon: MessageCircle, ownerOnly: true },
+    ],
+  },
+  {
+    title: "النظام",
+    items: [
+      { to: "/admin/settings", label: "الإعدادات", Icon: Settings },
+      { to: "/admin/users", label: "الحسابات", Icon: UserCog, ownerOnly: true },
+      { to: "/admin/audit", label: "سجل العمليات", Icon: ShieldCheck, ownerOnly: true },
+      { to: "/admin/import", label: "استيراد السجل السابق", Icon: FileUp, ownerOnly: true },
+    ],
+  },
 ];
 
 /** Polls the unread notification count so new booking requests show up without refreshing. */
@@ -88,25 +122,35 @@ export default function AdminLayout() {
     return () => document.documentElement.classList.remove("admin");
   }, []);
 
-  const items = nav.filter((n) => !n.ownerOnly || user.role === "OWNER");
+  const visible = groups
+    .map((g) => ({ ...g, items: g.items.filter((n) => !n.ownerOnly || user.role === "OWNER") }))
+    .filter((g) => g.items.length > 0);
 
   const sidebar = (
-    <nav aria-label="قائمة الإدارة" className="flex flex-col gap-1 p-3">
-      {items.map(({ to, label, Icon }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={to === "/admin"}
-          className={({ isActive }) =>
-            `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${isActive ? "bg-jood-gold/20 text-jood-gold" : "text-jood-beige/80 hover:bg-white/5"}`
-          }
-        >
-          <Icon aria-hidden className="size-4" />
-          {label}
-        </NavLink>
+    <nav aria-label="قائمة الإدارة" className="flex flex-col gap-4 p-3">
+      {visible.map((g) => (
+        <div key={g.title ?? "home"}>
+          {g.title && <p className="mb-1 px-3 text-[11px] font-medium tracking-wide text-jood-gold/70">{g.title}</p>}
+          <div className="flex flex-col gap-0.5">
+            {g.items.map(({ to, label, Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={to === "/admin"}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition ${isActive ? "bg-jood-gold/20 text-jood-gold" : "text-jood-beige/80 hover:bg-white/5"}`
+                }
+              >
+                <Icon aria-hidden className="size-4" />
+                {label}
+              </NavLink>
+            ))}
+          </div>
+        </div>
       ))}
     </nav>
   );
+
 
   return (
     <div className="min-h-dvh bg-[#f7f5f0] text-jood-ink">

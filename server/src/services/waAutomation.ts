@@ -3,7 +3,7 @@ import { formatDateAr, formatSAR, formatTimeAr } from "../lib/format.js";
 import { toIsoDate } from "../lib/dates.js";
 import type { SecretBox } from "../lib/secretBox.js";
 import { getSettings, type SettingValue } from "../settings/registry.js";
-import { checkinInstant } from "./doorCodes.js";
+import { checkinInstant, stayWindow } from "./doorCodes.js";
 import { checkoutInstant } from "./guestAccess.js";
 import { paymentSummary, type PaymentSummary } from "./payments.js";
 import { notifyOwner, type WhatsAppSender, type WhatsAppTemplateSender } from "./notifications.js";
@@ -147,9 +147,10 @@ async function accessCode(db: PrismaClient, box: SecretBox, b: BookingForMessage
   const c = await db.doorCode.findFirst({ where: { bookingId: b.id }, orderBy: { createdAt: "desc" } });
   if (!c) return { problem: "لم يُنشأ رمز الباب لهذا الحجز بعد" };
   if (c.status !== "ACTIVE" || !c.codeEncrypted) return { problem: `رمز الباب غير صالح (${c.status === "FAILED" ? "فشل إنشاؤه في TTLock" : "محذوف"})` };
-  const from = checkinInstant(b.startDate, s.stay.checkIn).getTime();
-  const to = checkoutInstant(b.endDate, s.stay.checkOut).getTime();
-  if (c.startsAt.getTime() !== from || c.endsAt.getTime() !== to) return { problem: "صلاحية رمز الباب لا تطابق موعد الحجز؛ أعد إنشاء الرمز" };
+  const w = stayWindow(b.items.map((i) => toIsoDate(i.date)), s.stay);
+  if (!w || c.startsAt.getTime() !== w.startsAt.getTime() || c.endsAt.getTime() !== w.endsAt.getTime()) {
+    return { problem: "صلاحية رمز الباب لا تطابق موعد الحجز؛ أعد إنشاء الرمز" };
+  }
   const code = box.open(c.codeEncrypted);
   return code ? { code } : { problem: "تعذر قراءة رمز الباب المحفوظ" };
 }

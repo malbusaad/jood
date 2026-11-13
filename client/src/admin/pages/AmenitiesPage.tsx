@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AmenityIcon, { AMENITY_ICONS } from "../../components/AmenityIcon";
 import { Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
 import { useUser } from "../auth";
 import { Button, Card, ErrorNote, Field, Loading, PageTitle, inputClass, useApi, useMutation } from "../ui";
@@ -12,17 +13,14 @@ interface Amenity {
   capacityMax: number | null;
   note: string | null;
   icon: string;
+  category?: "FACILITY" | "SERVICE";
   sortOrder: number;
   visible: boolean;
   available: boolean;
 }
 
-const ICONS: [string, string][] = [
-  ["tent", "خيمة"], ["majlis", "مجلس"], ["dining", "طعام"], ["outdoor", "جلسة خارجية"], ["kitchen", "مطبخ"],
-  ["restroom", "دورات مياه"], ["volleyball", "ملعب"], ["coffee", "قهوة"], ["kids", "ألعاب أطفال"], ["wifi", "إنترنت"],
-];
 
-const empty = { slug: "", name: "", description: "", capacityText: "", note: "", icon: "outdoor", sortOrder: 100, visible: true, available: true };
+const empty = { slug: "", name: "", description: "", capacityText: "", note: "", icon: "outdoor", category: "FACILITY" as "FACILITY" | "SERVICE", sortOrder: 100, visible: true, available: true };
 
 export default function AmenitiesPage() {
   const user = useUser();
@@ -39,6 +37,7 @@ export default function AmenitiesPage() {
       capacityText: editing.capacityText || null,
       note: editing.note || null,
       icon: editing.icon,
+      category: editing.category,
       sortOrder: Number(editing.sortOrder),
       visible: editing.visible,
       available: editing.available,
@@ -61,8 +60,8 @@ export default function AmenitiesPage() {
 
   return (
     <>
-      <PageTitle title="المرافق">
-        <Button onClick={() => setEditing({ ...empty })}><Plus className="size-4" /> مرفق</Button>
+      <PageTitle title="المرافق والخدمات">
+        <Button onClick={() => setEditing({ ...empty })}><Plus className="size-4" /> مرفق أو خدمة</Button>
       </PageTitle>
       <p className="mb-4 text-sm text-jood-ink/60">
         «متاح» يتحكم في إمكانية حجز الأجزاء التي تشمل المرفق (مثل إيقاف الجلسات الخارجية في غير موسمها). «ظاهر» يتحكم في ظهوره في الموقع.
@@ -80,9 +79,30 @@ export default function AmenitiesPage() {
             )}
             <Field label="السعة" hint="مثل «12 إلى 15 شخصًا»"><input value={editing.capacityText} onChange={(e) => setEditing({ ...editing, capacityText: e.target.value })} className={inputClass} /></Field>
             <Field label="ملاحظة قصيرة" hint="مثل «متكامل» أو «متوفر»"><input value={editing.note} onChange={(e) => setEditing({ ...editing, note: e.target.value })} className={inputClass} /></Field>
-            <Field label="الأيقونة">
-              <select value={editing.icon} onChange={(e) => setEditing({ ...editing, icon: e.target.value })} className={inputClass}>
-                {ICONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            <fieldset className="md:col-span-2">
+              <legend className="text-sm font-medium text-jood-ink/80">الأيقونة</legend>
+              <div className="mt-2 grid max-h-64 grid-cols-4 gap-2 overflow-y-auto rounded-xl border border-jood-green/10 bg-white p-2 sm:grid-cols-6 lg:grid-cols-8" role="radiogroup" aria-label="الأيقونة">
+                {(Object.entries(AMENITY_ICONS) as [string, { label: string }][]).map(([k, v]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="radio"
+                    aria-checked={editing.icon === k}
+                    aria-label={v.label}
+                    title={v.label}
+                    onClick={() => setEditing({ ...editing, icon: k })}
+                    className={`flex flex-col items-center gap-1 rounded-lg p-2 text-[11px] leading-tight transition ${editing.icon === k ? "bg-jood-green text-jood-beige" : "text-jood-ink/70 hover:bg-jood-gold/15"}`}
+                  >
+                    <AmenityIcon name={k} className="size-6" />
+                    <span className="line-clamp-1">{v.label}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <Field label="النوع" hint="يظهر في قسم «المرافق» أو «الخدمات»">
+              <select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value as "FACILITY" | "SERVICE" })} className={inputClass}>
+                <option value="FACILITY">مرفق</option>
+                <option value="SERVICE">خدمة</option>
               </select>
             </Field>
             <Field label="ترتيب الظهور"><input type="number" value={editing.sortOrder} onChange={(e) => setEditing({ ...editing, sortOrder: Number(e.target.value) })} className={inputClass} /></Field>
@@ -107,6 +127,7 @@ export default function AmenitiesPage() {
                 <div>
                   <span className={`font-medium ${a.visible ? "" : "text-jood-ink/40"}`}>{a.name}</span>
                   <span className="ms-2 text-sm text-jood-ink/60">{[a.capacityText, a.note].filter(Boolean).join(" · ")}</span>
+                  {a.category === "SERVICE" && <span className="ms-2 rounded-full bg-jood-gold/15 px-2 py-0.5 text-xs">خدمة</span>}
                   {!a.available && <span className="ms-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900">غير متاح</span>}
                   {!a.visible && <span className="ms-2 rounded-full bg-stone-200 px-2 py-0.5 text-xs">مخفي</span>}
                 </div>
@@ -117,7 +138,7 @@ export default function AmenitiesPage() {
                   <Button variant="ghost" aria-label={a.visible ? `إخفاء ${a.name}` : `إظهار ${a.name}`} onClick={() => toggle(a, "visible")}>
                     {a.visible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
                   </Button>
-                  <Button variant="ghost" aria-label={`تعديل ${a.name}`} onClick={() => setEditing({ id: a.id, slug: a.slug, name: a.name, description: a.description ?? "", capacityText: a.capacityText ?? "", note: a.note ?? "", icon: a.icon, sortOrder: a.sortOrder, visible: a.visible, available: a.available })}>
+                  <Button variant="ghost" aria-label={`تعديل ${a.name}`} onClick={() => setEditing({ id: a.id, slug: a.slug, name: a.name, description: a.description ?? "", capacityText: a.capacityText ?? "", note: a.note ?? "", icon: a.icon, category: a.category ?? "FACILITY", sortOrder: a.sortOrder, visible: a.visible, available: a.available })}>
                     <Pencil className="size-4" />
                   </Button>
                   {user.role === "OWNER" && (

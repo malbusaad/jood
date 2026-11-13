@@ -59,24 +59,31 @@ model Session {
 // ─────────────────────────── المرافق والأجزاء القابلة للحجز ───────────────────────────
 
 /// المرافق المعروضة في الكتالوج (الخيمة، المجلس، المطبخ...).
+enum AmenityCategory {
+  FACILITY // مرفق
+  SERVICE // خدمة
+}
+
 model Amenity {
-  id           String   @id @default(uuid()) @db.Uuid
-  slug         String   @unique @db.VarChar(60)
-  name         String   @db.VarChar(120)
+  id           String          @id @default(uuid()) @db.Uuid
+  slug         String          @unique @db.VarChar(60)
+  name         String          @db.VarChar(120)
   description  String?
   /// نص السعة كما يكتبه المالك، مثل «12 إلى 15 شخصًا»
-  capacityText String?  @map("capacity_text") @db.VarChar(80)
-  capacityMax  Int?     @map("capacity_max")
+  capacityText String?         @map("capacity_text") @db.VarChar(80)
+  capacityMax  Int?            @map("capacity_max")
   /// ملاحظة قصيرة مثل «متكامل» أو «العدد: 2»
-  note         String?  @db.VarChar(120)
-  icon         String   @default("outdoor") @db.VarChar(30)
-  sortOrder    Int      @default(0) @map("sort_order")
+  note         String?         @db.VarChar(120)
+  icon         String          @default("outdoor") @db.VarChar(30)
+  /// مرفق (مكان) أو خدمة — للعرض في قسمين بصفحة «المرافق والخدمات»
+  category     AmenityCategory @default(FACILITY)
+  sortOrder    Int             @default(0) @map("sort_order")
   /// إخفاء مؤقت من الموقع العام
-  visible      Boolean  @default(true)
+  visible      Boolean         @default(true)
   /// متاح للاستخدام/الحجز (يوقفه المالك عند الحاجة، مثل الجلسات الخارجية في غير موسمها)
-  available    Boolean  @default(true)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  available    Boolean         @default(true)
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
 
   resources ResourceAmenity[]
   media     MediaAsset[]
@@ -436,6 +443,8 @@ model MediaAsset {
   isHero     Boolean   @default(false) @map("is_hero")
   /// الملفات الخاصة (مثل إثبات التحويل) لا تُخدم إلا للمدير
   isPrivate  Boolean   @default(false) @map("is_private")
+  /// محتوى الصورة نفسها (يُحفظ في قاعدة البيانات لأن قرص الخادم يُمسح مع كل نشر)
+  data       Bytes?
   createdAt  DateTime  @default(now()) @map("created_at")
 
   amenity Amenity? @relation(fields: [amenityId], references: [id], onDelete: SetNull)

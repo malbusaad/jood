@@ -85,6 +85,8 @@ export function createApp({
           imgSrc: ["'self'", "data:", "blob:", "https:"],
           mediaSrc: ["'self'", "blob:", "https:"],
           connectSrc: ["'self'"],
+          // The intro video can be a YouTube or Vimeo link (privacy-enhanced YouTube player).
+          frameSrc: ["https://www.youtube-nocookie.com", "https://player.vimeo.com"],
           frameAncestors: ["'none'"],
         },
       },
@@ -94,6 +96,8 @@ export function createApp({
   // The tourism-licence logo upload is the only larger JSON body (base64 image, max 512 KB).
   app.use("/api/admin/license-logo", express.json({ limit: "800kb" }));
   app.use("/api/admin/site-images", express.json({ limit: "800kb" }));
+  app.use("/api/admin/media", express.json({ limit: "2200kb" }));
+  app.use("/api/admin/media/video", express.raw({ type: "video/*", limit: "80mb" }));
   // The previous-records workbook (base64), read in memory and never stored.
   app.use("/api/admin/import", express.json({ limit: "8mb" }));
   app.use(express.json({ limit: "100kb" }));
@@ -112,6 +116,45 @@ export function createApp({
 
   app.use("/api/health", healthRouter(db));
   app.use("/api/public", publicRouter(db, { whatsapp, bookingLimit, secretBox, codeCheckLimit }));
+  // Photos uploaded by the owner. Private files (e.g. transfer receipts) are never served here.
+  // Files never change under the same name, so the last video is kept in memory for fast, seekable playback.
+  let videoCache: { key: string; mime: string; data: Buffer } | null = null;
+  app.get("/api/media/:key", async (req, res, next) => {
+    try {
+      const key = String(req.params.key);
+      // The cached copy is used only while the file still exists (it may have been replaced or deleted).
+      let file = videoCache?.key === key && (await db.mediaAsset.count({ where: { storageKey: key, isPrivate: false } })) ? videoCache : null;
+      if (!file) {
+        const m = await db.mediaAsset.findUnique({ where: { storageKey: key }, select: { data: true, mimeType: true, isPrivate: true, kind: true } });
+        if (!m || m.isPrivate || !m.data) return void res.status(404).json({ error: "غير موجود" });
+        file = { key, mime: m.mimeType, data: Buffer.from(m.data) };
+        if (m.kind === "VIDEO") videoCache = file;
+      }
+      res.set("Content-Type", file.mime);
+      // Each upload has a new name, so the file never changes: cache for a long time.
+      res.set("Cache-Control", "public, max-age=31536000, immutable");
+      res.set("Content-Security-Policy", "default-src 'none'");
+      res.set("Accept-Ranges", "bytes");
+      // Video players (Safari on iPhone in particular) ask for the file in byte ranges.
+      const range = /^bytes=(\d*)-(\d*)$/.exec(req.get("range") ?? "");
+      if (range && (range[1] || range[2])) {
+        const size = file.data.length;
+        let start = range[1] ? Number(range[1]) : size - Number(range[2]);
+        let end = range[1] && range[2] ? Number(range[2]) : size - 1;
+        start = Math.max(0, start);
+        end = Math.min(end, size - 1);
+        if (start > end || start >= size) {
+          res.set("Content-Range", `bytes */${size}`);
+          return void res.status(416).end();
+        }
+        res.status(206).set("Content-Range", `bytes ${start}-${end}/${size}`);
+        return void res.send(file.data.subarray(start, end + 1));
+      }
+      res.send(file.data);
+    } catch (err) {
+      next(err);
+    }
+  });
   app.use("/api/guest", guestRouter(db, { secretBox }));
 
   app.use("/api/auth", requireSameOrigin(allowedOrigins), loadSession(db, secureCookies));

@@ -110,8 +110,8 @@ export function requireSameOrigin(allowedOrigins: string[]) {
     }
     const type = req.get("content-type") ?? "";
     const hasBody = req.method !== "DELETE" || Number(req.get("content-length") ?? 0) > 0;
-    if (type.startsWith("multipart/form-data")) {
-      // HTML forms can post multipart cross-site, so uploads must carry a same-site Origin.
+    if (type.startsWith("multipart/form-data") || type.startsWith("video/")) {
+      // File uploads (multipart forms, raw video) must carry a same-site Origin.
       if (!origin) throw new HttpError(403, "مصدر الطلب غير مسموح");
     } else if (hasBody && !type.startsWith("application/json")) {
       throw new HttpError(415, "نوع المحتوى غير مدعوم");

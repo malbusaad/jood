@@ -13,6 +13,7 @@ import type { WhatsAppConfig, WhatsAppSender, WhatsAppTemplateSender } from "../
 import { whatsappRouter } from "./whatsapp.js";
 import { pushRouter } from "./push.js";
 import { expensesRouter, importRouter, reportsRouter } from "./finance.js";
+import { mediaRouter } from "./media.js";
 import type { PushSend } from "../../services/push.js";
 import type { LockClient } from "../../services/ttlock.js";
 import type { SecretBox } from "../../lib/secretBox.js";
@@ -49,6 +50,7 @@ export function adminRouter(
   router.use("/pricing", requireRole("OWNER"), pricingRouter(db));
   router.use("/discounts", requireRole("OWNER"), discountsRouter(db));
   router.use("/expenses", requireRole("OWNER"), expensesRouter(db));
+  router.use("/media", requireRole("OWNER"), mediaRouter(db));
   router.use("/reports", requireRole("OWNER"), reportsRouter(db));
   router.use("/import", requireRole("OWNER"), importRouter(db, opts.secretBox));
   router.use("/whatsapp", requireRole("OWNER"), whatsappRouter(db, { waConfig: opts.waConfig ?? null, waSend: opts.waSend ?? null }));

@@ -1,16 +1,6 @@
 /** Shapes returned by GET /api/public/site. All values are editable by the owner. */
 
-export type AmenityIconName =
-  | "tent"
-  | "majlis"
-  | "dining"
-  | "outdoor"
-  | "kitchen"
-  | "restroom"
-  | "volleyball"
-  | "coffee"
-  | "kids"
-  | "wifi";
+export type AmenityIconName = string;
 
 export interface Amenity {
   id: string;
@@ -21,6 +11,8 @@ export interface Amenity {
   capacityText: string | null;
   note: string | null;
   icon: AmenityIconName;
+  /** مرفق أو خدمة */
+  category?: "FACILITY" | "SERVICE";
   available: boolean;
 }
 
@@ -60,7 +52,7 @@ export interface SiteContent {
   amenities: Amenity[];
   /** السعر الأساسي للاستراحة كاملة: 0 = الأحد ... 6 = السبت (null = لا يوجد سعر معتمد) */
   weekdayPrices: (number | null)[];
-  media: { logoUrl: string | null; iconUrl?: string | null; heroImageUrl: string | null; videoUrl: string | null; gallery: GalleryImage[] };
+  media: { logoUrl: string | null; iconUrl?: string | null; heroImageUrl: string | null; videoUrl: string | null; video?: { kind: "iframe" | "file"; src: string } | null; gallery: GalleryImage[] };
 }
 
 export interface CalendarDay {

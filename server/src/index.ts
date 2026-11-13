@@ -3,8 +3,9 @@ import { fileURLToPath } from "node:url";
 import { loadEnv } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
 import { createApp } from "./app.js";
-import { metaTemplateSender, metaWhatsAppSender, whatsAppConfigFromEnv } from "./services/notifications.js";
+import { metaTemplateSender, metaWhatsAppSender, notifyOwner, whatsAppConfigFromEnv } from "./services/notifications.js";
 import { processDueMessages } from "./services/waAutomation.js";
+import { ensureDoorCodes } from "./services/doorCodes.js";
 import { webPushSend } from "./services/push.js";
 import { alertUnpaidBalances, expireStaleBookings } from "./services/bookings.js";
 import { ttlockClient, ttlockConfigFromEnv } from "./services/ttlock.js";
@@ -19,6 +20,10 @@ const waConfig = whatsAppConfigFromEnv();
 const whatsapp = waConfig ? metaWhatsAppSender(waConfig) : null;
 const waSend = waConfig ? metaTemplateSender(waConfig) : null;
 const secretBox = makeSecretBox(env.SESSION_SECRET, "door-codes");
+const lock = (() => {
+  const cfg = ttlockConfigFromEnv();
+  return cfg ? ttlockClient(cfg) : null;
+})();
 const app = createApp({
   db: prisma,
   clientDistDir,
@@ -29,10 +34,7 @@ const app = createApp({
   waConfig,
   waSend,
   push: { send: webPushSend, subject: new URL(env.PUBLIC_BASE_URL).origin },
-  lock: (() => {
-    const cfg = ttlockConfigFromEnv();
-    return cfg ? ttlockClient(cfg) : null;
-  })(),
+  lock,
   whatsapp,
 });
 
@@ -43,6 +45,18 @@ const expiryTimer = setInterval(() => {
   alertUnpaidBalances(prisma, whatsapp).catch((err) => console.error("[balance-alert]", err instanceof Error ? err.message : err));
 }, 5 * 60 * 1000);
 expiryTimer.unref();
+
+// Door codes for confirmed upcoming bookings that have none yet (e.g. imported records). Never retries a failure.
+const ensureCodes = () =>
+  ensureDoorCodes(prisma, lock, secretBox, (b, reason) =>
+    notifyOwner(
+      prisma,
+      { type: "SYSTEM", title: `تعذر إنشاء رمز الباب ${b.reference}`, body: `${b.guestName}\n${reason}\nأعد المحاولة من صفحة الحجز ← رمز الباب.`, bookingId: b.id },
+      whatsapp,
+    ),
+  ).catch((err) => console.error("[door-codes]", err instanceof Error ? err.message : err));
+setTimeout(ensureCodes, 15_000).unref();
+setInterval(ensureCodes, 5 * 60 * 1000).unref();
 
 // Guest WhatsApp messages: sends what is due, every minute (state lives in the database).
 const waTimer = setInterval(() => {

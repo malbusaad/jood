@@ -201,6 +201,44 @@ export function bookingsRouter(
     }
   });
 
+  /** Door code follows the booking: created on confirmation, deleted on cancellation/rejection. */
+  async function afterStatus(req: import("express").Request, id: string, status: string, reference: string) {
+    // Lock problems never undo the status change; the owner is told and can retry from the booking page.
+    const lockSettings = await getSetting(db, "doorLock");
+    if (!opts.lock || !lockSettings.enabled) return;
+    if (status === "CONFIRMED") {
+      await issueDoorCode(db, opts.lock, opts.secretBox, id, req).catch((err) =>
+        notifyOwner(db, { type: "SYSTEM", title: `تعذر إنشاء رقم الباب ${reference}`, body: err instanceof Error ? err.message : "خطأ", bookingId: id }, null),
+      );
+    } else if (status === "CANCELLED" || status === "REJECTED") {
+      const failures = await revokeDoorCodes(db, opts.lock, id, req);
+      if (failures > 0) {
+        await notifyOwner(db, { type: "SYSTEM", title: `تعذر حذف رقم الباب ${reference}`, body: "احذفه من تطبيق TTLock أو أعد المحاولة من صفحة الحجز.", bookingId: id }, null);
+      }
+    }
+  }
+
+  /**
+   * «استلمت المبلغ — أكّد الحجز» in one tap: records the verified amount still needed to confirm
+   * (the up-front booking part, plus the security deposit when the guest chose to pay it with it)
+   * and confirms. Only for money the owner has actually received.
+   */
+  router.post("/:id/quick-confirm", async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    const { method } = parse(z.object({ method: z.enum(["BANK_TRANSFER", "GATHERN", "CASH"]) }), req.body);
+    const b = await db.booking.findUnique({ where: { id }, include: { payments: true } });
+    if (!b) throw new HttpError(404, "الحجز غير موجود");
+    if (!TRANSITIONS[b.status].includes("CONFIRMED")) throw new HttpError(409, `لا يمكن تأكيد حجز «${STATUS_LABELS[b.status]}»`);
+    const sum = paymentSummary(b);
+    const bookingPart = Number(sum.upfrontRemaining);
+    const depositPart = !b.legacyPayment && b.depositTiming === "WITH_FIRST_PAYMENT" ? Number(sum.depositRemaining) : 0;
+    if (bookingPart > 0) await recordVerifiedPayment(db, req, id, { method, purpose: "BOOKING", amount: bookingPart, note: "تسجيل سريع عند التأكيد" });
+    if (depositPart > 0) await recordVerifiedPayment(db, req, id, { method, purpose: "SECURITY_DEPOSIT", amount: depositPart, note: "تسجيل سريع عند التأكيد" });
+    const updated = await changeStatus(db, req, id, "CONFIRMED", null);
+    await afterStatus(req, id, "CONFIRMED", updated.reference);
+    res.json({ ...updated, recorded: { booking: bookingPart, deposit: depositPart } });
+  });
+
   router.post("/:id/status", async (req, res) => {
     const { id } = parse(uuidParam, req.params);
     const { status, reason } = parse(
@@ -208,22 +246,7 @@ export function bookingsRouter(
       req.body,
     );
     const updated = await changeStatus(db, req, id, status as BookingStatus, reason ?? null);
-
-    // Door code follows the booking: created on confirmation, deleted on cancellation/rejection.
-    // Lock problems never undo the status change; the owner is told and can retry from the booking page.
-    const lockSettings = await getSetting(db, "doorLock");
-    if (opts.lock && lockSettings.enabled) {
-      if (status === "CONFIRMED") {
-        await issueDoorCode(db, opts.lock, opts.secretBox, id, req).catch((err) =>
-          notifyOwner(db, { type: "SYSTEM", title: `تعذر إنشاء رقم الباب ${updated.reference}`, body: err instanceof Error ? err.message : "خطأ", bookingId: id }, null),
-        );
-      } else if (status === "CANCELLED" || status === "REJECTED") {
-        const failures = await revokeDoorCodes(db, opts.lock, id, req);
-        if (failures > 0) {
-          await notifyOwner(db, { type: "SYSTEM", title: `تعذر حذف رقم الباب ${updated.reference}`, body: "احذفه من تطبيق TTLock أو أعد المحاولة من صفحة الحجز.", bookingId: id }, null);
-        }
-      }
-    }
+    await afterStatus(req, id, status, updated.reference);
     res.json(updated);
   });
 

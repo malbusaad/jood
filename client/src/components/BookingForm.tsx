@@ -35,9 +35,9 @@ function DayWithPrice({ day, modifiers, children, ...props }: DayButtonProps) {
 
 const pickerComponents = { DayButton: DayWithPrice };
 
-function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+function Step({ n, title, children, id }: { n: number; title: string; children: React.ReactNode; id?: string }) {
   return (
-    <section className="rounded-3xl border border-jood-green/10 bg-white/80 p-5 sm:p-7">
+    <section id={id} className="scroll-mt-24 rounded-3xl border border-jood-green/10 bg-white/80 p-5 sm:p-7">
       <h2 className="flex items-center gap-3 font-display text-xl font-semibold text-jood-green">
         <span className="grid size-8 place-items-center rounded-full bg-jood-green text-sm text-jood-gold">{n}</span>
         {title}
@@ -183,6 +183,11 @@ export default function BookingForm() {
               onSelect={(d) => {
                 setDate(d);
                 setError(null);
+                // Take the guest straight to the next step (what to book and the price).
+                if (d) {
+                  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+                  setTimeout(() => document.getElementById("booking-step-2")?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }), 120);
+                }
               }}
               locale={ar}
               dir="rtl"
@@ -217,7 +222,7 @@ export default function BookingForm() {
       </Step>
 
       {date && (
-        <Step n={2} title="ماذا تريد أن تحجز؟">
+        <Step n={2} title="ماذا تريد أن تحجز؟" id="booking-step-2">
           {!options ? (
             <p className="flex items-center gap-2 text-sm text-jood-ink/60">
               <Loader2 aria-hidden className="size-4 animate-spin" /> جارٍ التحقق من الإتاحة…
@@ -365,18 +370,24 @@ export default function BookingForm() {
               <span className="text-sm">رقم الجوال (واتساب)</span>
               <input required type="tel" inputMode="tel" dir="ltr" autoComplete="tel" placeholder="05xxxxxxxx" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={`mt-1 text-end ${input}`} />
             </label>
-            <label className="block">
-              <span className="text-sm">البريد الإلكتروني (اختياري)</span>
-              <input type="email" dir="ltr" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={`mt-1 text-end ${input}`} />
-            </label>
-            <label className="block">
-              <span className="text-sm">عدد الضيوف المتوقع (اختياري)</span>
-              <input type="number" min={1} inputMode="numeric" value={form.guestCount} onChange={(e) => setForm({ ...form, guestCount: e.target.value })} className={`mt-1 ${input}`} />
-            </label>
-            <label className="block sm:col-span-2">
-              <span className="text-sm">ملاحظات (اختياري)</span>
-              <textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={`mt-1 ${input}`} />
-            </label>
+            {/* Optional details folded away so the form stays short. */}
+            <details className="group sm:col-span-2">
+              <summary className="cursor-pointer text-sm text-jood-green underline decoration-jood-gold underline-offset-4">تفاصيل إضافية (اختياري): البريد، عدد الضيوف، ملاحظات</summary>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm">البريد الإلكتروني (اختياري)</span>
+                  <input type="email" dir="ltr" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={`mt-1 text-end ${input}`} />
+                </label>
+                <label className="block">
+                  <span className="text-sm">عدد الضيوف المتوقع (اختياري)</span>
+                  <input type="number" min={1} inputMode="numeric" value={form.guestCount} onChange={(e) => setForm({ ...form, guestCount: e.target.value })} className={`mt-1 ${input}`} />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="text-sm">ملاحظات (اختياري)</span>
+                  <textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={`mt-1 ${input}`} />
+                </label>
+              </div>
+            </details>
             {/* Honeypot — hidden from people, filled by bots */}
             <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} className="hidden" />
           </div>

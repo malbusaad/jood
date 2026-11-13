@@ -645,3 +645,69 @@ describe("previous records import, expenses and reports", () => {
     expect(screen.getByRole("row", { name: /أبريل/ })).toHaveTextContent("1,500 ريال");
   });
 });
+
+describe("photos and video", () => {
+  it("lists photos, sets the main photo, and saves the video link", async () => {
+    const photos = [
+      { id: "p1", url: "/api/media/photo-1.jpg", alt: "المجلس", isHero: false, sizeBytes: 1000 },
+      { id: "p2", url: "/api/media/photo-2.jpg", alt: null, isHero: true, sizeBytes: 1000 },
+    ];
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/media": () => [200, { items: photos }],
+        "GET /api/admin/settings": () => [200, { introVideo: { url: null } }],
+        "PATCH /api/admin/media/p1": () => [200, { ...photos[0], isHero: true }],
+        "PUT /api/admin/settings/introVideo": (body) => [200, { key: "introVideo", value: body }],
+        "GET /api/admin/media/video": () => [200, { video: { url: "/api/media/video-1.mp4", sizeBytes: 1000 } }],
+      },
+      OWNER,
+    );
+    renderAt("/admin/media");
+    expect(await screen.findByRole("img", { name: "المجلس" })).toHaveAttribute("src", "/api/media/photo-1.jpg");
+    expect(screen.getAllByText("الرئيسية", { selector: "span" }).length).toBe(1);
+    expect(screen.getByRole("button", { name: "جعل الصورة 2 الرئيسية" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "جعل الصورة 1 الرئيسية" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH" && (c.body as { isHero?: boolean }).isHero)).toBe(true));
+    expect(await screen.findByLabelText("الفيديو الحالي")).toHaveAttribute("src", "/api/media/video-1.mp4");
+    expect(screen.getByRole("button", { name: "استبدال الفيديو" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("رابط الفيديو"), { target: { value: "https://youtu.be/abc123def" } });
+    fireEvent.click(screen.getByRole("button", { name: "حفظ الرابط" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/admin/settings/introVideo")?.body).toEqual({ url: "https://youtu.be/abc123def" }));
+  });
+});
+
+describe("faster admin work", () => {
+  it("confirms in one tap with the exact amount due", async () => {
+    const summary = {
+      plan: "DEPOSIT", depositTiming: "WITH_FIRST_PAYMENT", legacy: false, bookingTotal: "1200.00", upfrontAmount: "600.00",
+      bookingPaid: "0.00", bookingRefunded: "0.00", bookingRemaining: "1200.00", upfrontRemaining: "600.00",
+      securityDeposit: "500.00", depositPaid: "0.00", depositRefunded: "0.00", depositRemaining: "500.00", depositStatus: "UNPAID",
+      dueToConfirm: "1100.00", canConfirm: false, fullySettled: false, balanceDueAt: null,
+    } as const;
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/bookings/b1": () => [200, booking({ payment: { ...summary } })],
+        "POST /api/admin/bookings/b1/quick-confirm": () => [200, {}],
+      },
+      OWNER,
+    );
+    vi.stubGlobal("confirm", () => true);
+    renderAt("/admin/bookings/b1");
+    expect(await screen.findByText(/إذا وصلك المطلوب للتأكيد \(1,100 ريال، يشمل التأمين\)/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("طريقة الاستلام"), { target: { value: "CASH" } });
+    fireEvent.click(screen.getByRole("button", { name: "استلمت المبلغ — أكّد الحجز" }));
+    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/quick-confirm"))?.body).toEqual({ method: "CASH" }));
+  });
+
+  it("groups the admin menu and offers many icons for amenities", async () => {
+    mockAdminApi({ "GET /api/admin/amenities": () => [200, []] }, OWNER);
+    renderAt("/admin/amenities");
+    const nav = await screen.findByRole("navigation", { name: "قائمة الإدارة" });
+    for (const g of ["الحجوزات", "الأسعار والعروض", "الاستراحة", "المالية", "التواصل", "النظام"]) expect(within(nav).getAllByText(g, { selector: "p" })).toHaveLength(1);
+    fireEvent.click(await screen.findByRole("button", { name: "مرفق أو خدمة" }));
+    const picker = await screen.findByRole("radiogroup", { name: "الأيقونة" });
+    expect(within(picker).getAllByRole("radio").length).toBeGreaterThanOrEqual(50);
+    fireEvent.click(within(picker).getByRole("radio", { name: "مواقف" }));
+    expect(within(picker).getByRole("radio", { name: "مواقف" })).toHaveAttribute("aria-checked", "true");
+  });
+});

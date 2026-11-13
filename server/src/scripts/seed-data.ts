@@ -14,7 +14,7 @@ export const initialAmenities = [
   { slug: "volleyball", name: "ملعب كرة الطائرة", capacityText: null, capacityMax: null, note: "متوفر", icon: "volleyball" },
   { slug: "coffee", name: "ركن القهوة", capacityText: null, capacityMax: null, note: "متوفر", icon: "coffee" },
   { slug: "kids", name: "الألعاب الخارجية للأطفال", capacityText: null, capacityMax: null, note: "متوفرة", icon: "kids" },
-  { slug: "wifi", name: "الإنترنت", capacityText: null, capacityMax: null, note: "عالي السرعة", icon: "wifi" },
+  { slug: "wifi", name: "الإنترنت", capacityText: null, capacityMax: null, note: "عالي السرعة", icon: "wifi", category: "SERVICE" as const },
 ];
 
 /**

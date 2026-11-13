@@ -1,5 +1,6 @@
 import { Suspense, useState } from "react";
-import { Link, NavLink, Outlet } from "react-router";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
+import { MessageCircle } from "lucide-react";
 import LogoSlot from "./LogoSlot";
 import ScrollToTop from "./ScrollToTop";
 import NewsTicker from "./NewsTicker";
@@ -13,6 +14,11 @@ const headerLinks = publicPages.filter((p) =>
 export default function Layout() {
   const [open, setOpen] = useState(false);
   const site = useSiteContent();
+  const { pathname } = useLocation();
+  const showBar = pathname !== "/booking";
+  const wa = site.contact.whatsapp
+    ? `https://wa.me/${site.contact.whatsapp}?text=${encodeURIComponent(`السلام عليكم، أرغب بالاستفسار عن حجز ${site.general.name}`)}`
+    : null;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -79,11 +85,27 @@ export default function Layout() {
         )}
       </header>
 
-      <main id="main" className="flex-1">
+      <main id="main" className={`flex-1 ${showBar ? "pb-20 lg:pb-0" : ""}`}>
         <Suspense fallback={<div className="min-h-[60dvh]" aria-busy="true" />}>
           <Outlet />
         </Suspense>
       </main>
+
+      {/* Phones: booking is always one tap away. */}
+      {showBar && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-jood-gold/20 bg-jood-green-950/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-md gap-2">
+            <Link to="/booking" className="flex-1 rounded-full bg-jood-gold py-3 text-center font-medium text-jood-green-950">
+              احجز الآن
+            </Link>
+            {wa && (
+              <a href={wa} target="_blank" rel="noopener noreferrer" aria-label="استفسار عبر واتساب" className="grid size-12 place-items-center rounded-full border border-jood-gold/50 text-jood-gold">
+                <MessageCircle aria-hidden className="size-5" />
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       <footer className="bg-jood-green-950 text-jood-beige/80">
         <div className="mx-auto grid max-w-6xl gap-6 px-4 py-10 sm:grid-cols-2">
