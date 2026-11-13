@@ -327,6 +327,9 @@ export default function BookingDetailPage() {
           {b.allowedTransitions.length > 0 && (
             <Card title="الإجراءات">
               <div className="flex flex-col gap-2">
+                {b.allowedTransitions.includes("CONFIRMED") && ps && !ps.canConfirm && Number(ps.dueToConfirm) > 0 && (
+                  <QuickConfirm id={b.id} due={Number(ps.dueToConfirm)} withDeposit={!ps.legacy && ps.depositTiming === "WITH_FIRST_PAYMENT" && Number(ps.depositRemaining) > 0} onDone={reload} />
+                )}
                 {b.allowedTransitions
                   .filter((s) => s !== "CANCELLED" && s !== "REJECTED")
                   .map((s) => (
@@ -364,5 +367,36 @@ export default function BookingDetailPage() {
         </div>
       </div>
     </>
+  );
+}
+
+/** «استلمت المبلغ — أكّد الحجز»: records exactly the amount still needed and confirms, in one tap. */
+function QuickConfirm({ id, due, withDeposit, onDone }: { id: string; due: number; withDeposit: boolean; onDone: () => void }) {
+  const [method, setMethod] = useState<PaymentMethod>("BANK_TRANSFER");
+  const m = useMutation();
+  return (
+    <div className="rounded-xl border border-jood-gold/50 bg-jood-gold/10 p-3">
+      <p className="text-sm font-medium">تأكيد سريع</p>
+      <p className="mt-1 text-xs leading-6 text-jood-ink/70">
+        إذا وصلك المطلوب للتأكيد ({money(due)}{withDeposit ? "، يشمل التأمين" : ""}) سجّله وأكّد الحجز بضغطة واحدة. يُنشأ رمز الباب تلقائيًا.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <select aria-label="طريقة الاستلام" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)} className={`${inputClass} w-auto`}>
+          <option value="BANK_TRANSFER">تحويل بنكي</option>
+          <option value="CASH">نقدًا</option>
+          <option value="GATHERN">جاذر إن</option>
+        </select>
+        <Button
+          busy={m.busy}
+          onClick={async () => {
+            if (!confirm(`تأكيد استلام ${money(due)} وتأكيد الحجز؟`)) return;
+            if (await m.run(`/api/admin/bookings/${id}/quick-confirm`, "POST", { method })) onDone();
+          }}
+        >
+          استلمت المبلغ — أكّد الحجز
+        </Button>
+      </div>
+      <ErrorNote>{m.error}</ErrorNote>
+    </div>
   );
 }

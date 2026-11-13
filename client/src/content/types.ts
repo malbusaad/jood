@@ -1,16 +1,6 @@
 /** Shapes returned by GET /api/public/site. All values are editable by the owner. */
 
-export type AmenityIconName =
-  | "tent"
-  | "majlis"
-  | "dining"
-  | "outdoor"
-  | "kitchen"
-  | "restroom"
-  | "volleyball"
-  | "coffee"
-  | "kids"
-  | "wifi";
+export type AmenityIconName = string;
 
 export interface Amenity {
   id: string;

@@ -4,7 +4,15 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { HttpError, parse, uuidParam } from "../../lib/http.js";
 import { audit } from "../../lib/audit.js";
 
-const iconNames = ["tent", "majlis", "dining", "outdoor", "kitchen", "restroom", "volleyball", "coffee", "kids", "wifi"] as const;
+/** Icons the owner can pick for an amenity or service (the client draws each one). */
+export const iconNames = [
+  "tent", "majlis", "dining", "outdoor", "kitchen", "restroom", "volleyball", "coffee", "kids", "wifi",
+  "parking", "bbq", "pool", "bedroom", "tv", "ac", "shower", "garden", "lighting", "fridge",
+  "microwave", "laundry", "shade", "baby", "games", "speakers", "projector", "cctv", "cleaning", "water",
+  "fan", "power", "accessible", "gym", "football", "music", "drinks", "chef", "heater", "cooling",
+  "events", "cinema", "security", "entrance", "charging", "puzzle", "bike", "flowers", "smokefree", "family",
+  "mic", "sun", "star", "prayer",
+] as const;
 
 // Field rules shared by «create» and «edit». Defaults apply only when creating: an edit changes
 // only the fields it sends (a quick on/off toggle must never reset the others).

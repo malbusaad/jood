@@ -2,7 +2,6 @@ import { Link } from "react-router";
 import { Images } from "lucide-react";
 import PageHeader from "../components/PageHeader";
 import AmenityGrid from "../components/AmenityGrid";
-import SectionHeading from "../components/SectionHeading";
 import { useSiteContent } from "../hooks/useSiteContent";
 
 export default function AmenitiesPage() {
@@ -18,17 +17,15 @@ export default function AmenitiesPage() {
       <PageHeader title="المرافق والخدمات">مرافق متعددة وخدمات تجعل إقامتك استثنائية ومميزة.</PageHeader>
       <section className="mx-auto max-w-6xl space-y-16 px-4 py-16">
         <div>
-          <SectionHeading eyebrow="المرافق" title="مساحات لكل مناسبة">
-            سعة كل مرفق موضحة. قد تتغير إتاحة بعض المرافق حسب الموسم.
-          </SectionHeading>
-          <div className="mt-10">
+          <h2 className="font-display text-2xl font-semibold text-jood-green sm:text-3xl">المرافق</h2>
+          <div className="mt-6">
             <AmenityGrid amenities={facilities} photoCounts={photoCounts} />
           </div>
         </div>
         {services.length > 0 && (
           <div>
-            <SectionHeading eyebrow="الخدمات" title="خدمات تجعل إقامتك أسهل" />
-            <div className="mt-10">
+            <h2 className="font-display text-2xl font-semibold text-jood-green sm:text-3xl">الخدمات</h2>
+            <div className="mt-6">
               <AmenityGrid amenities={services} photoCounts={photoCounts} />
             </div>
           </div>

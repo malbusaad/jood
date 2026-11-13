@@ -137,3 +137,16 @@ describe("editing keeps what was not sent", () => {
     expect(await db.bookingResource.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ description: "وصف الجزء", sortOrder: 9, active: false });
   });
 });
+
+describe("amenity icons", () => {
+  it("accepts the new icons and the site draws every one of them", async () => {
+    const fs = await import("node:fs");
+    const { iconNames } = await import("../src/routes/admin/amenities.js");
+    const client = fs.readFileSync(new URL("../../client/src/components/AmenityIcon.tsx", import.meta.url), "utf8");
+    for (const name of iconNames) expect(client, `icon «${name}» missing in the client`).toMatch(new RegExp(`\\b${name}: `));
+    const app = makeApp();
+    const { agent } = await signedIn(app);
+    expect((await agent.post("/api/admin/amenities").send({ slug: "parking-x", name: "مواقف", icon: "parking", category: "SERVICE" })).status).toBe(201);
+    expect((await agent.post("/api/admin/amenities").send({ slug: "nope-x", name: "x", icon: "rocket" })).status).toBe(400);
+  });
+});

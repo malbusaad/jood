@@ -675,3 +675,39 @@ describe("photos and video", () => {
     await waitFor(() => expect(calls.find((c) => c.path === "/api/admin/settings/introVideo")?.body).toEqual({ url: "https://youtu.be/abc123def" }));
   });
 });
+
+describe("faster admin work", () => {
+  it("confirms in one tap with the exact amount due", async () => {
+    const summary = {
+      plan: "DEPOSIT", depositTiming: "WITH_FIRST_PAYMENT", legacy: false, bookingTotal: "1200.00", upfrontAmount: "600.00",
+      bookingPaid: "0.00", bookingRefunded: "0.00", bookingRemaining: "1200.00", upfrontRemaining: "600.00",
+      securityDeposit: "500.00", depositPaid: "0.00", depositRefunded: "0.00", depositRemaining: "500.00", depositStatus: "UNPAID",
+      dueToConfirm: "1100.00", canConfirm: false, fullySettled: false, balanceDueAt: null,
+    } as const;
+    const calls = mockAdminApi(
+      {
+        "GET /api/admin/bookings/b1": () => [200, booking({ payment: { ...summary } })],
+        "POST /api/admin/bookings/b1/quick-confirm": () => [200, {}],
+      },
+      OWNER,
+    );
+    vi.stubGlobal("confirm", () => true);
+    renderAt("/admin/bookings/b1");
+    expect(await screen.findByText(/إذا وصلك المطلوب للتأكيد \(1,100 ريال، يشمل التأمين\)/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("طريقة الاستلام"), { target: { value: "CASH" } });
+    fireEvent.click(screen.getByRole("button", { name: "استلمت المبلغ — أكّد الحجز" }));
+    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/quick-confirm"))?.body).toEqual({ method: "CASH" }));
+  });
+
+  it("groups the admin menu and offers many icons for amenities", async () => {
+    mockAdminApi({ "GET /api/admin/amenities": () => [200, []] }, OWNER);
+    renderAt("/admin/amenities");
+    const nav = await screen.findByRole("navigation", { name: "قائمة الإدارة" });
+    for (const g of ["الحجوزات", "الأسعار والعروض", "الاستراحة", "المالية", "التواصل", "النظام"]) expect(within(nav).getAllByText(g, { selector: "p" })).toHaveLength(1);
+    fireEvent.click(await screen.findByRole("button", { name: "مرفق أو خدمة" }));
+    const picker = await screen.findByRole("radiogroup", { name: "الأيقونة" });
+    expect(within(picker).getAllByRole("radio").length).toBeGreaterThanOrEqual(50);
+    fireEvent.click(within(picker).getByRole("radio", { name: "مواقف" }));
+    expect(within(picker).getByRole("radio", { name: "مواقف" })).toHaveAttribute("aria-checked", "true");
+  });
+});

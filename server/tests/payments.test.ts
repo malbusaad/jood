@@ -249,3 +249,27 @@ describe("manual bookings and the contract", () => {
     expect(text).toContain("سداد التأمين");
   });
 });
+
+describe("one-tap confirm («استلمت المبلغ — أكّد الحجز»)", () => {
+  it("records exactly what is needed to confirm (deposit plan + security deposit) and confirms", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book({ paymentPlan: "DEPOSIT" });
+    const r = await agent.post(`/api/admin/bookings/${booking.id}/quick-confirm`).send({ method: "CASH" });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ status: "CONFIRMED", recorded: { booking: 475, deposit: 500 } });
+    const pays = await db.payment.findMany({ where: { bookingId: booking.id }, orderBy: { purpose: "asc" } });
+    expect(pays.map((p) => [p.purpose, p.amount.toFixed(2), p.method, p.status])).toEqual([
+      ["BOOKING", "475.00", "CASH", "ACCEPTED"],
+      ["SECURITY_DEPOSIT", "500.00", "CASH", "ACCEPTED"],
+    ]);
+  });
+
+  it("does not double-record what was already paid, and refuses bookings that cannot be confirmed", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book({ depositTiming: "BEFORE_CHECKIN" });
+    await pay(agent, booking.id, 400).expect(201);
+    const r = await agent.post(`/api/admin/bookings/${booking.id}/quick-confirm`).send({ method: "BANK_TRANSFER" });
+    expect(r.body.recorded).toEqual({ booking: 550, deposit: 0 });
+    expect((await agent.post(`/api/admin/bookings/${booking.id}/quick-confirm`).send({ method: "CASH" })).status).toBe(409); // already confirmed
+  });
+});

@@ -216,7 +216,9 @@ describe("easier visit and booking", () => {
     renderApp("/amenities", { site });
     expect(await screen.findByRole("heading", { level: 1, name: "المرافق والخدمات" })).toBeInTheDocument();
     expect(screen.getByText("مرافق متعددة وخدمات تجعل إقامتك استثنائية ومميزة.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "خدمات تجعل إقامتك أسهل" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "المرافق" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "الخدمات" })).toBeInTheDocument();
+    expect(screen.queryByText(/مساحات لكل مناسبة|سعة كل مرفق موضحة/)).toBeNull();
     expect(screen.getByRole("link", { name: /الصور \(1\)/ })).toHaveAttribute("href", "/gallery?amenity=a1");
     expect(within(screen.getByRole("main")).getByRole("link", { name: "معرض الصور" })).toHaveAttribute("href", "/gallery");
   });
