@@ -8,7 +8,7 @@ import { useSiteContent } from "../hooks/useSiteContent";
 import { publicPages } from "../routes";
 
 const headerLinks = publicPages.filter((p) =>
-  ["/", "/amenities", "/gallery", "/pricing", "/faq", "/contact"].includes(p.path),
+  ["/", "/amenities", "/gallery", "/booking", "/faq", "/contact"].includes(p.path),
 );
 
 export default function Layout() {
