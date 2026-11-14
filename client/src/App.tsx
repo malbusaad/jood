@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import Layout from "./components/Layout";
 import SiteGate from "./components/SiteGate";
 import HomePage from "./pages/HomePage";
@@ -8,7 +8,6 @@ import HomePage from "./pages/HomePage";
 const AmenitiesPage = lazy(() => import("./pages/AmenitiesPage"));
 const GalleryPage = lazy(() => import("./pages/GalleryPage"));
 const VideoPage = lazy(() => import("./pages/VideoPage"));
-const PricingPage = lazy(() => import("./pages/PricingPage"));
 const BookingPage = lazy(() => import("./pages/BookingPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 const FaqPage = lazy(() => import("./pages/FaqPage"));
@@ -49,7 +48,8 @@ export default function App() {
         <Route path="amenities" element={<AmenitiesPage />} />
         <Route path="gallery" element={<GalleryPage />} />
         <Route path="video" element={<VideoPage />} />
-        <Route path="pricing" element={<PricingPage />} />
+        {/* Prices and booking are one page now; old links still work. */}
+        <Route path="pricing" element={<Navigate to="/booking" replace />} />
         <Route path="booking" element={<BookingPage />} />
         <Route path="terms" element={<TermsPage />} />
         <Route path="faq" element={<FaqPage />} />

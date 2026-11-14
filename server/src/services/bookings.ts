@@ -113,7 +113,9 @@ export async function evaluateSelection(db: Db, sel: Selection, opts: { channel:
 }
 
 export interface NewBooking extends Selection {
-  guest: { name: string; phone: string; email?: string | null; nationalId?: string | null };
+  guest: { name: string; phone: string | null; email?: string | null; nationalId?: string | null };
+  /** «حجز يدوي» for a returning customer: link to this existing record instead of matching by phone. */
+  guestId?: string | null;
   guestCount?: number | null;
   guestNotes?: string | null;
   adminNotes?: string | null;
@@ -153,11 +155,28 @@ export async function createBooking(
       const id = input.guest.nationalId
         ? { nationalIdEnc: ctx.secretBox.seal(input.guest.nationalId), nationalIdLast4: input.guest.nationalId.slice(-4) }
         : {};
-      const guest = await tx.guest.upsert({
-        where: { phone: input.guest.phone },
-        create: { name: input.guest.name, phone: input.guest.phone, email: input.guest.email ?? null, ...id },
-        update: { name: input.guest.name, ...(input.guest.email ? { email: input.guest.email } : {}), ...id },
-      });
+      let guest;
+      if (input.guestId) {
+        // Returning customer chosen from the suggestions: the booking is linked to the same record.
+        // Only missing details the admin typed are added; the saved name is kept as it is.
+        const existing = await tx.guest.findUnique({ where: { id: input.guestId } });
+        if (!existing) throw new HttpError(400, "العميل المختار غير موجود");
+        const patch: Prisma.GuestUpdateInput = { ...id };
+        if (input.guest.email) patch.email = input.guest.email;
+        if (input.guest.phone && input.guest.phone !== existing.phone) {
+          if (existing.phone) throw new HttpError(409, "للعميل رقم جوال محفوظ مختلف؛ عدّله من صفحة الضيف أولًا");
+          if (await tx.guest.findUnique({ where: { phone: input.guest.phone } })) throw new HttpError(409, "رقم الجوال مسجل لعميل آخر");
+          patch.phone = input.guest.phone;
+        }
+        guest = Object.keys(patch).length ? await tx.guest.update({ where: { id: existing.id }, data: patch }) : existing;
+      } else {
+        if (!input.guest.phone) throw new HttpError(400, "رقم الجوال مطلوب");
+        guest = await tx.guest.upsert({
+          where: { phone: input.guest.phone },
+          create: { name: input.guest.name, phone: input.guest.phone, email: input.guest.email ?? null, ...id },
+          update: { name: input.guest.name, ...(input.guest.email ? { email: input.guest.email } : {}), ...id },
+        });
+      }
 
       const discount: AppliedDiscount | null = input.discountCode
         ? computeDiscount(await findCode(tx, input.discountCode), {

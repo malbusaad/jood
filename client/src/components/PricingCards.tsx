@@ -4,9 +4,27 @@ import { groupWeekdayPrices } from "../lib/pricing";
 
 const numberFmt = new Intl.NumberFormat("en-US");
 
-export default function PricingCards({ weekdayPrices }: { weekdayPrices: (number | null)[] }) {
+export default function PricingCards({ weekdayPrices, compact = false }: { weekdayPrices: (number | null)[]; compact?: boolean }) {
   const groups = groupWeekdayPrices(weekdayPrices);
   if (groups.length === 0) return <PendingNotice>الأسعار قيد التحديث.</PendingNotice>;
+  // A slim one-line version for the booking page, so the calendar stays near the top on phones.
+  if (compact) {
+    return (
+      <ul aria-label="أسعار الاستراحة كاملة لليوم" className="flex flex-wrap gap-2">
+        {groups.map(({ label, price }, i) => {
+          const Icon = i === 0 ? Sun : Moon;
+          return (
+            <li key={label} className="flex items-center gap-2 rounded-full border border-jood-green/15 bg-white/80 px-4 py-2 text-sm">
+              <Icon aria-hidden className="size-4 text-jood-gold" />
+              <span>{label}</span>
+              <strong className="font-display text-base text-jood-green">{numberFmt.format(price)}</strong>
+              <span className="text-jood-ink/60">ريال</span>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
   const top = Math.max(...groups.map((g) => g.price));
 
   return (

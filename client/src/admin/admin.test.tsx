@@ -711,3 +711,78 @@ describe("faster admin work", () => {
     expect(within(picker).getByRole("radio", { name: "مواقف" })).toHaveAttribute("aria-checked", "true");
   });
 });
+
+describe("manual booking: previous customers suggested while typing", () => {
+  const resources = { resources: [{ id: "full", name: "الاستراحة كاملة", kind: "FULL", active: true }] };
+  const sara = { id: "g1", name: "سارة محمد القحطاني", phone: "966501112222", email: null, notes: "عميلة دائمة", nationalIdMasked: "••••••6789", bookingCount: 3, lastStay: "2026-05-01" };
+  const fatima = { id: "g2", name: "فاطمة سعد", phone: null, email: null, notes: null, nationalIdMasked: null, bookingCount: 1, lastStay: null };
+  const routes = (calls: { q?: string }[]) => ({
+    "GET /api/admin/resources": () => [200, resources] as [number, unknown],
+    "POST /api/admin/bookings/quote": () => [200, { available: true, total: 950, deposit: 500 }] as [number, unknown],
+    "GET /api/admin/guests/suggest": (_b: unknown, url: URL) => {
+      const q = url.searchParams.get("q")!;
+      calls.push({ q });
+      return [200, [sara, fatima].filter((g) => g.name.includes(q) || (g.phone ?? "").includes(q))] as [number, unknown];
+    },
+    "POST /api/admin/bookings": () => [201, { id: "b9" }] as [number, unknown],
+    "GET /api/admin/bookings/b9": () => [200, booking({ id: "b9" })] as [number, unknown],
+  });
+  async function fillStay() {
+    fireEvent.change(await screen.findByLabelText("تاريخ الدخول"), { target: { value: "2026-12-06" } });
+    fireEvent.click(await screen.findByRole("checkbox", { name: "الاستراحة كاملة" }));
+  }
+
+  it("suggests from the first letter, picks a customer, and links the booking to their record", async () => {
+    const searched: { q?: string }[] = [];
+    const calls = mockAdminApi(routes(searched), OWNER);
+    renderAt("/admin/bookings/new");
+    await fillStay();
+    const box = screen.getByRole("combobox", { name: "اسم الضيف" });
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "س" } });
+    const option = await screen.findByRole("option", { name: /سارة محمد القحطاني/ });
+    expect(searched.at(-1)).toEqual({ q: "س" });
+    fireEvent.click(option);
+    const card = screen.getByLabelText("العميل المختار");
+    expect(card).toHaveTextContent("+966501112222");
+    expect(card).toHaveTextContent("••••••6789");
+    expect(card).toHaveTextContent("عميلة دائمة");
+    expect(screen.queryByLabelText("الجوال (واتساب)")).toBeNull(); // nothing to retype
+    await waitFor(() => expect(screen.getByRole("button", { name: "إنشاء الحجز" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الحجز" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings")).toBe(true));
+    const body = calls.find((c) => c.method === "POST" && c.path === "/api/admin/bookings")!.body as Record<string, unknown>;
+    expect(body).toMatchObject({ guestId: "g1", phone: null, nationalId: null });
+    expect(body).not.toHaveProperty("name");
+  });
+
+  it("asks only for what an old customer is missing (e.g. the phone)", async () => {
+    const calls = mockAdminApi(routes([]), OWNER);
+    renderAt("/admin/bookings/new");
+    await fillStay();
+    const box = screen.getByRole("combobox", { name: "اسم الضيف" });
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "فاط" } });
+    fireEvent.click(await screen.findByRole("option", { name: /فاطمة سعد/ }));
+    fireEvent.change(screen.getByLabelText(/الجوال \(واتساب\) — غير مسجل/), { target: { value: "0567778888" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "إنشاء الحجز" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الحجز" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings")).toBe(true));
+    expect(calls.find((c) => c.method === "POST" && c.path === "/api/admin/bookings")!.body).toMatchObject({ guestId: "g2", phone: "0567778888" });
+  });
+
+  it("a new customer is entered as before, without choosing from the list", async () => {
+    const calls = mockAdminApi(routes([]), OWNER);
+    renderAt("/admin/bookings/new");
+    await fillStay();
+    const box = screen.getByRole("combobox", { name: "اسم الضيف" });
+    fireEvent.change(box, { target: { value: "خالد ناصر العتيبي" } });
+    fireEvent.change(screen.getByLabelText("الجوال (واتساب)"), { target: { value: "0599990000" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "إنشاء الحجز" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الحجز" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings")).toBe(true));
+    const body = calls.find((c) => c.method === "POST" && c.path === "/api/admin/bookings")!.body as Record<string, unknown>;
+    expect(body).toMatchObject({ name: "خالد ناصر العتيبي", phone: "0599990000" });
+    expect(body).not.toHaveProperty("guestId");
+  });
+});
