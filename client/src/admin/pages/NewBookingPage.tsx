@@ -4,6 +4,7 @@ import { api } from "../../api/client";
 import type { ResourceRef } from "../types";
 import { Button, Card, ErrorNote, Field, PageTitle, dayLabel, inputClass, money, useApi, useMutation } from "../ui";
 import { DISCOUNT_LABEL, previewDiscount, r2, type DiscountType } from "../manualDiscount";
+import DayChips from "./DayChips";
 import GuestAutocomplete, { type SuggestedGuest } from "./GuestAutocomplete";
 
 type Q = { available: true; total: number; deposit: number } | { available: false; reason: string };
@@ -34,23 +35,30 @@ export default function NewBookingPage() {
   const [disc, setDisc] = useState({ on: false, type: "FIXED" as DiscountType, value: "" });
   const [pay, setPay] = useState({ amount: "", method: "" as Method | "" });
   const [quote, setQuote] = useState<Q | null>(null);
+  /** Consecutive days (check-in → check-out) or separate days chosen one by one. */
+  const [mode, setMode] = useState<"RANGE" | "SEPARATE">("RANGE");
+  const [days, setDays] = useState<string[]>([]);
   /** A returning customer chosen from the suggestions (the booking is linked to their record). */
   const [guest, setGuest] = useState<SuggestedGuest | null>(null);
 
   const resources = data?.resources.filter((r) => r.active) ?? [];
-  const nights = f.startDate && f.endDate ? daysBetween(f.startDate, f.endDate) : 0;
+  const rangeNights = f.startDate && f.endDate ? daysBetween(f.startDate, f.endDate) : 0;
+  const nights = mode === "SEPARATE" ? days.length : rangeNights;
   const datesOk = nights >= 1 && nights <= 30;
+  const firstDay = mode === "SEPARATE" ? (days[0] ?? "") : f.startDate;
+  const sepKey = mode === "SEPARATE" ? days.join(",") : "";
 
   useEffect(() => {
-    if (!f.startDate || !datesOk || f.resourceIds.length === 0) return setQuote(null);
+    if (!firstDay || !datesOk || f.resourceIds.length === 0) return setQuote(null);
     let cancelled = false;
-    api<Q>("/api/admin/bookings/quote", { method: "POST", body: JSON.stringify({ resourceIds: f.resourceIds, startDate: f.startDate, nights }) })
+    const dates = sepKey ? sepKey.split(",") : null;
+    api<Q>("/api/admin/bookings/quote", { method: "POST", body: JSON.stringify({ resourceIds: f.resourceIds, startDate: firstDay, nights, dates }) })
       .then((q) => !cancelled && setQuote(q))
       .catch(() => !cancelled && setQuote(null));
     return () => {
       cancelled = true;
     };
-  }, [f.startDate, nights, datesOk, f.resourceIds]);
+  }, [firstDay, nights, datesOk, f.resourceIds, sepKey]);
 
   function toggle(id: string, kind: string) {
     setF((s) => {
@@ -63,7 +71,7 @@ export default function NewBookingPage() {
 
   function setStart(startDate: string) {
     // Keep the stay length when the check-in moves; a fresh form defaults to one day.
-    const keep = datesOk ? nights : 1;
+    const keep = rangeNights >= 1 && rangeNights <= 30 ? rangeNights : 1;
     setF({ ...f, startDate, endDate: startDate ? addDays(startDate, keep) : "" });
   }
 
@@ -84,8 +92,9 @@ export default function NewBookingPage() {
   async function submit() {
     const r = await m.run<{ id: string }>("/api/admin/bookings", "POST", {
       channel: f.channel,
-      startDate: f.startDate,
+      startDate: firstDay,
       nights,
+      dates: mode === "SEPARATE" ? days : null,
       resourceIds: f.resourceIds,
       ...(guest
         ? {
@@ -159,20 +168,37 @@ export default function NewBookingPage() {
 
       <Section n={2} title="تفاصيل الحجز">
         <div className="grid gap-4 md:grid-cols-3">
-          <Field label="تاريخ الدخول">
-            <input type="date" value={f.startDate} onChange={(e) => setStart(e.target.value)} className={inputClass} />
-          </Field>
-          <Field label="تاريخ الخروج">
-            <input type="date" value={f.endDate} min={f.startDate ? addDays(f.startDate, 1) : undefined} onChange={(e) => setF({ ...f, endDate: e.target.value })} className={inputClass} />
-          </Field>
-          <div>
-            <p className="text-sm font-medium text-jood-ink/80">عدد الأيام</p>
-            <p className="mt-1 rounded-xl bg-jood-beige/60 px-4 py-2.5 font-semibold" aria-label="عدد الأيام">
-              {f.startDate && f.endDate ? (datesOk ? `${nights} ${nights === 1 ? "يوم" : nights === 2 ? "يومان" : nights <= 10 ? "أيام" : "يومًا"}` : "—") : "—"}
-            </p>
+          <div className="flex flex-wrap gap-2 md:col-span-3" role="radiogroup" aria-label="طريقة اختيار الأيام">
+            {([["RANGE", "أيام متتالية"], ["SEPARATE", "أيام متفرقة"]] as const).map(([k, l]) => (
+              <button key={k} type="button" role="radio" aria-checked={mode === k} onClick={() => setMode(k)}
+                className={`rounded-full border px-4 py-1.5 text-sm ${mode === k ? "border-jood-green bg-jood-green text-jood-beige" : "border-jood-green/25"}`}>
+                {l}
+              </button>
+            ))}
           </div>
-          {f.startDate && f.endDate && !datesOk && (
-            <p className="text-sm text-red-800 md:col-span-3">{nights < 1 ? "تاريخ الخروج يجب أن يكون بعد تاريخ الدخول" : "أقصى مدة 30 يومًا"}</p>
+          {mode === "SEPARATE" ? (
+            <div className="md:col-span-3">
+              <DayChips days={days} onChange={setDays} />
+              {days.length > 30 && <p className="mt-2 text-sm text-red-800">أقصى عدد 30 يومًا</p>}
+            </div>
+          ) : (
+            <>
+            <Field label="تاريخ الدخول">
+              <input type="date" value={f.startDate} onChange={(e) => setStart(e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="تاريخ الخروج">
+              <input type="date" value={f.endDate} min={f.startDate ? addDays(f.startDate, 1) : undefined} onChange={(e) => setF({ ...f, endDate: e.target.value })} className={inputClass} />
+            </Field>
+            <div>
+              <p className="text-sm font-medium text-jood-ink/80">عدد الأيام</p>
+              <p className="mt-1 rounded-xl bg-jood-beige/60 px-4 py-2.5 font-semibold" aria-label="عدد الأيام">
+                {f.startDate && f.endDate ? (datesOk ? `${nights} ${nights === 1 ? "يوم" : nights === 2 ? "يومان" : nights <= 10 ? "أيام" : "يومًا"}` : "—") : "—"}
+              </p>
+            </div>
+            {f.startDate && f.endDate && !datesOk && (
+              <p className="text-sm text-red-800 md:col-span-3">{nights < 1 ? "تاريخ الخروج يجب أن يكون بعد تاريخ الدخول" : "أقصى مدة 30 يومًا"}</p>
+            )}
+            </>
           )}
           <fieldset className="md:col-span-3">
             <legend className="text-sm font-medium text-jood-ink/80">نوع الحجز</legend>
@@ -284,7 +310,7 @@ export default function NewBookingPage() {
       <Section n={4} title="تأكيد">
         <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2" aria-label="ملخص الحجز">
           <Row k="العميل" v={guestName || "—"} />
-          <Row k="الفترة" v={datesOk ? `${dayLabel(f.startDate)} ← ${dayLabel(f.endDate)}` : "—"} />
+          <Row k={mode === "SEPARATE" ? "الأيام" : "الفترة"} v={!datesOk ? "—" : mode === "SEPARATE" ? days.map(dayLabel).join("، ") : `${dayLabel(f.startDate)} ← ${dayLabel(f.endDate)}`} />
           <Row k="عدد الأيام" v={datesOk ? String(nights) : "—"} />
           <Row k="نوع الحجز" v={resources.filter((r) => f.resourceIds.includes(r.id)).map((r) => r.name).join("، ") || "—"} />
           <Row k="السعر الأساسي" v={base == null ? "—" : money(base)} />

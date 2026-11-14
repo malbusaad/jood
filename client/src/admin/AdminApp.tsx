@@ -10,6 +10,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const BookingsPage = lazy(() => import("./pages/BookingsPage"));
 const BookingDetailPage = lazy(() => import("./pages/BookingDetailPage"));
 const NewBookingPage = lazy(() => import("./pages/NewBookingPage"));
+const EditBookingPage = lazy(() => import("./pages/EditBookingPage"));
 const ContractPage = lazy(() => import("./pages/ContractPage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
@@ -55,6 +56,7 @@ export default function AdminApp() {
           <Route path="bookings" element={<BookingsPage />} />
           <Route path="bookings/new" element={<NewBookingPage />} />
           <Route path="bookings/:id" element={<BookingDetailPage />} />
+          <Route path="bookings/:id/edit" element={<EditBookingPage />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="guests" element={<GuestsPage />} />

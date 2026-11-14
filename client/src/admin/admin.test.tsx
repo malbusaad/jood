@@ -858,3 +858,73 @@ describe("manual booking: previous customers suggested while typing", () => {
     expect(screen.getByRole("button", { name: "حفظ الحجز" })).toBeDisabled();
   });
 });
+
+describe("separate days and editing a booking", () => {
+  const resources = { resources: [{ id: "full", name: "الاستراحة كاملة", kind: "FULL", active: true }, { id: "majlis", name: "المجلس", kind: "PART", active: true }] };
+  const posted = (calls: { method: string; path: string; body?: unknown }[], path: string) =>
+    calls.filter((c) => c.method === "POST" && c.path === path).at(-1)?.body as Record<string, unknown> | undefined;
+
+  it("a manual booking can take separate days (e.g. Thursday and Saturday)", async () => {
+    const calls = mockAdminApi({
+      "GET /api/admin/resources": () => [200, resources],
+      "POST /api/admin/bookings/quote": () => [200, { available: true, total: 2400, deposit: 500 }],
+      "GET /api/admin/guests/suggest": () => [200, []],
+      "POST /api/admin/bookings": () => [201, { id: "b9" }],
+      "GET /api/admin/bookings/b9": () => [200, booking({ id: "b9" })],
+    }, OWNER);
+    renderAt("/admin/bookings/new");
+    fireEvent.click(await screen.findByRole("radio", { name: "أيام متفرقة" }));
+    for (const d of ["2026-12-10", "2026-12-12"]) {
+      fireEvent.change(screen.getByLabelText("يوم للإضافة"), { target: { value: d } });
+      fireEvent.click(screen.getByRole("button", { name: "إضافة اليوم" }));
+    }
+    fireEvent.click(await screen.findByRole("checkbox", { name: "الاستراحة كاملة" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "اسم الضيف" }), { target: { value: "خالد ناصر العتيبي" } });
+    fireEvent.change(screen.getByLabelText("الجوال (واتساب)"), { target: { value: "0599990000" } });
+    await screen.findByLabelText("السعر الأساسي");
+    expect(posted(calls, "/api/admin/bookings/quote")).toMatchObject({ dates: ["2026-12-10", "2026-12-12"], nights: 2, startDate: "2026-12-10" });
+    expect(screen.getByLabelText("ملخص الحجز")).toHaveTextContent("الأيام");
+    fireEvent.click(screen.getByRole("button", { name: "حفظ الحجز" }));
+    await waitFor(() => expect(posted(calls, "/api/admin/bookings")).toMatchObject({ dates: ["2026-12-10", "2026-12-12"], nights: 2 }));
+  });
+
+  it("a confirmed booking shows «تعديل الحجز»; changing the price only sends the discount and details", async () => {
+    const b = booking({ status: "CONFIRMED", statusLabel: "مؤكد", paid: "1200.00", allowedTransitions: ["CANCELLED", "COMPLETED"] });
+    const calls = mockAdminApi({
+      "GET /api/admin/bookings/b1": () => [200, b],
+      "GET /api/admin/resources": () => [200, resources],
+      "POST /api/admin/bookings/b1/edit": () => [200, { ...b, overpaid: "200.00" }],
+    }, OWNER);
+    renderAt("/admin/bookings/b1");
+    fireEvent.click(await screen.findByRole("link", { name: /تعديل الحجز/ }));
+    expect(await screen.findByLabelText("السعر الأساسي")).toHaveTextContent("1,200");
+    fireEvent.click(screen.getByRole("button", { name: "+ إضافة خصم" }));
+    fireEvent.change(screen.getByLabelText("نوع الخصم"), { target: { value: "FINAL_PRICE" } });
+    fireEvent.change(screen.getByLabelText("السعر النهائي (ريال)"), { target: { value: "1000" } });
+    expect(screen.getByLabelText("السعر الجديد")).toHaveTextContent("1,000");
+    expect(screen.getByRole("status")).toHaveTextContent("المدفوع أكثر من السعر الجديد بـ 200");
+    fireEvent.click(screen.getByRole("button", { name: "حفظ التعديلات" }));
+    await waitFor(() => expect(posted(calls, "/api/admin/bookings/b1/edit")).toBeDefined());
+    const body = posted(calls, "/api/admin/bookings/b1/edit")!;
+    expect(body).toMatchObject({ manualDiscount: { type: "FINAL_PRICE", value: 1000 }, securityDeposit: 500, guestCount: 15 });
+    expect(body).not.toHaveProperty("dates");
+  });
+
+  it("adding a day re-prices from the server (own days not counted as taken) and sends the new days", async () => {
+    const b = booking({ status: "CONFIRMED", statusLabel: "مؤكد", paid: "1200.00" });
+    const calls = mockAdminApi({
+      "GET /api/admin/bookings/b1": () => [200, b],
+      "GET /api/admin/resources": () => [200, resources],
+      "POST /api/admin/bookings/quote": () => [200, { available: true, total: 2400 }],
+      "POST /api/admin/bookings/b1/edit": () => [200, b],
+    }, OWNER);
+    renderAt("/admin/bookings/b1/edit");
+    fireEvent.change(await screen.findByLabelText("يوم للإضافة"), { target: { value: "2026-12-12" } });
+    fireEvent.click(screen.getByRole("button", { name: "إضافة اليوم" }));
+    await waitFor(() => expect(screen.getByLabelText("السعر الجديد")).toHaveTextContent("2,400"));
+    expect(posted(calls, "/api/admin/bookings/quote")).toMatchObject({ dates: ["2026-12-10", "2026-12-12"], bookingId: "b1" });
+    expect(screen.getByLabelText("الأثر على الدفع")).toHaveTextContent("المتبقي بعد التعديل1,200");
+    fireEvent.click(screen.getByRole("button", { name: "حفظ التعديلات" }));
+    await waitFor(() => expect(posted(calls, "/api/admin/bookings/b1/edit")).toMatchObject({ dates: ["2026-12-10", "2026-12-12"], resourceIds: ["full"], manualDiscount: null }));
+  });
+});

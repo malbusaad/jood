@@ -77,7 +77,10 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
 
   const start = toIsoDate(booking.startDate);
   const end = toIsoDate(booking.endDate);
-  const days = Math.round((booking.endDate.getTime() - booking.startDate.getTime()) / 86_400_000);
+  const bookedDays = [...new Set(booking.items.map((i) => toIsoDate(i.date)))].sort();
+  const days = bookedDays.length || Math.round((booking.endDate.getTime() - booking.startDate.getTime()) / 86_400_000);
+  // Separate days (e.g. Thursday and Saturday) are listed one by one.
+  const separate = bookedDays.length > 0 && bookedDays.length !== Math.round((booking.endDate.getTime() - booking.startDate.getTime()) / 86_400_000);
   const resourceNames = [...new Map(booking.items.map((i) => [i.resourceId, i.resource.name])).values()];
   const total = Number(booking.totalAmount);
   const deposit = Number(booking.depositAmount);
@@ -92,6 +95,7 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
         ["الدخول", `${formatDateAr(start)} — الساعة ${formatTimeAr(s.stay.checkIn)}`],
         ["الخروج", `${formatDateAr(end)} — الساعة ${formatTimeAr(s.stay.checkOut)}`],
         ["عدد الأيام", String(days)],
+        ...(separate ? ([["الأيام المحجوزة", bookedDays.map((d) => formatDateAr(d)).join("، ")]] as [string, string][]) : []),
         ...(booking.guestCount ? ([["عدد الضيوف المتوقع", String(booking.guestCount)]] as [string, string][]) : []),
         ...(discount > 0
           ? ([

@@ -37,13 +37,14 @@ export async function resourcesCompatible(db: Db, resourceIds: string[]): Promis
 }
 
 /** Resource ids (among candidates) that are blocked on any of the given dates by active bookings. */
-export async function blockedResources(db: Db, candidateIds: string[], dates: string[]) {
+export async function blockedResources(db: Db, candidateIds: string[], dates: string[], excludeBookingId?: string) {
   const keysByResource = await lockKeysByResource(db, candidateIds);
   const allKeys = [...new Set([...keysByResource.values()].flat())];
   if (allKeys.length === 0 || dates.length === 0) return new Map<string, Set<string>>();
 
   const locks = await db.bookingLock.findMany({
-    where: { key: { in: allKeys }, date: { in: dates.map(fromIsoDate) } },
+    // When editing a booking, its own days never count as taken.
+    where: { key: { in: allKeys }, date: { in: dates.map(fromIsoDate) }, ...(excludeBookingId ? { bookingId: { not: excludeBookingId } } : {}) },
     select: { key: true, date: true },
   });
   const lockedByKey = new Map<string, Set<string>>();

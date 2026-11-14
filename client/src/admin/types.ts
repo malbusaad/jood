@@ -40,6 +40,8 @@ export interface BookingSummary {
   expiresAt: string | null;
   guest: { id: string; name: string; phone: string | null };
   resources: ResourceRef[];
+  /** Booked days (separate days are not counted from the date span). */
+  days?: number;
   paid: string;
   pendingPayments: number;
 }

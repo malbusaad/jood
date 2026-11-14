@@ -44,6 +44,8 @@ export interface Selection {
   resourceIds: string[];
   startDate: string;
   nights: number;
+  /** «حجز يدوي» only: specific, possibly separate days (e.g. Thursday and Saturday) instead of startDate + nights. */
+  dates?: string[] | null;
 }
 
 export interface Evaluation {
@@ -59,17 +61,29 @@ export interface Evaluation {
  * Throws HttpError with an Arabic reason when it cannot be booked. Used for quotes, for
  * creating a booking (inside its transaction) and never trusts anything from the browser.
  */
-export async function evaluateSelection(db: Db, sel: Selection, opts: { channel: BookingChannel }): Promise<Evaluation> {
+export async function evaluateSelection(
+  db: Db,
+  sel: Selection,
+  opts: {
+    channel: BookingChannel;
+    /** When editing a booking: its own days are not «taken», and days it already has may stay even if past. */
+    editing?: { bookingId: string; keepDates: string[] };
+  },
+): Promise<Evaluation> {
   const policy = await getSetting(db, "bookingPolicy");
   const ids = [...new Set(sel.resourceIds)];
   if (ids.length === 0) throw new HttpError(400, "اختر ما تريد حجزه");
-  if (!Number.isInteger(sel.nights) || sel.nights < 1 || sel.nights > policy.maxNights) {
+  const separate = opts.channel !== "WEBSITE" && sel.dates && sel.dates.length > 0;
+  const nights = separate ? new Set(sel.dates).size : sel.nights;
+  if (!Number.isInteger(nights) || nights < 1 || nights > policy.maxNights) {
     throw new HttpError(400, `عدد الأيام من 1 إلى ${policy.maxNights}`);
   }
+  const dates = separate ? [...new Set(sel.dates)].sort() : eachDate(sel.startDate, addDays(sel.startDate, sel.nights));
+  const startDate = dates[0]!;
 
   const today = todayInRiyadh();
-  if (sel.startDate < today) throw new HttpError(400, "لا يمكن الحجز في تاريخ سابق");
-  if (opts.channel === "WEBSITE" && sel.startDate > addDays(today, policy.maxAdvanceDays)) {
+  if (dates.some((d) => d < today && !opts.editing?.keepDates.includes(d))) throw new HttpError(400, "لا يمكن الحجز في تاريخ سابق");
+  if (opts.channel === "WEBSITE" && startDate > addDays(today, policy.maxAdvanceDays)) {
     throw new HttpError(400, `يمكن الحجز حتى ${policy.maxAdvanceDays} يومًا مقدمًا`);
   }
 
@@ -89,14 +103,13 @@ export async function evaluateSelection(db: Db, sel: Selection, opts: { channel:
   }
   if (!(await resourcesCompatible(db, ids))) throw new HttpError(400, "الأجزاء المختارة لا يمكن حجزها معًا");
 
-  const dates = eachDate(sel.startDate, addDays(sel.startDate, sel.nights));
   const q = await quote(db, ids, dates);
   if (q.missing.length > 0) {
     const m = q.missing[0]!;
     throw new HttpError(400, `${m.resourceName} غير متاح للحجز يوم ${formatDateAr(m.date)}`);
   }
 
-  const blocked = await blockedResources(db, ids, dates);
+  const blocked = await blockedResources(db, ids, dates, opts.editing?.bookingId);
   if (blocked.size > 0) {
     const [resourceId, days] = [...blocked.entries()][0]!;
     const name = resources.find((r) => r.id === resourceId)?.name ?? "";
@@ -105,7 +118,7 @@ export async function evaluateSelection(db: Db, sel: Selection, opts: { channel:
 
   return {
     dates,
-    endDate: addDays(sel.startDate, sel.nights),
+    endDate: addDays(dates.at(-1)!, 1),
     resources: resources.map((r) => ({ id: r.id, name: r.name, kind: r.kind })),
     quote: q,
     deposit: policy.securityDeposit,
@@ -227,7 +240,7 @@ export async function createBooking(
           reference: await nextReference(tx),
           guestId: guest.id,
           channel: input.channel,
-          startDate: fromIsoDate(input.startDate),
+          startDate: fromIsoDate(ev.dates[0]!),
           endDate: fromIsoDate(ev.endDate),
           totalAmount: bookingTotal,
           discountAmount: discount ? discount.amount : manual ? manual.amount : 0,
@@ -340,6 +353,107 @@ export function acceptedPaid(payments: { status: string; amount: Prisma.Decimal;
   return payments
     .filter((p) => p.status === "ACCEPTED" && (p.purpose ?? "BOOKING") === "BOOKING")
     .reduce((s, p) => (p.kind === "REFUND" ? s.sub(p.amount) : s.add(p.amount)), new Prisma.Decimal(0));
+}
+
+/** Statuses in which the owner may still change a booking's days, type, price or details. */
+export const EDITABLE: BookingStatus[] = ["NEW", "AWAITING_PAYMENT", "AWAITING_VERIFICATION", "CONFIRMED"];
+
+export interface BookingEdit {
+  resourceIds?: string[];
+  /** The booking's days — consecutive or separate. */
+  dates?: string[];
+  /** undefined = keep the current discount; null = remove it; otherwise a manual discount on the (new) base price. */
+  manualDiscount?: { type: "FIXED" | "PERCENT" | "FINAL_PRICE"; value: number } | null;
+  securityDeposit?: number;
+  paymentPlan?: PaymentPlan;
+  depositTiming?: DepositTiming;
+  guestCount?: number | null;
+  adminNotes?: string | null;
+}
+
+/**
+ * The owner edits an active booking (confirmed ones included): days, booking type, price/discount and
+ * details. All in one transaction with the same availability rules as a new booking; payments already
+ * recorded are kept as they are. The day prices, discount codes and other bookings are never changed.
+ */
+export async function editBooking(db: PrismaClient, req: Request, id: string, input: BookingEdit) {
+  try {
+    return await db.$transaction(async (tx) => {
+      const b = await lockBooking(tx, id);
+      if (!EDITABLE.includes(b.status)) throw new HttpError(409, `لا يمكن تعديل حجز حالته «${STATUS_LABELS[b.status]}»`);
+
+      const oldDates = [...new Set(b.items.map((i) => toIsoDate(i.date)))].sort();
+      const oldRes = [...new Set(b.items.map((i) => i.resourceId))].sort();
+      const dates = input.dates ? [...new Set(input.dates)].sort() : oldDates;
+      const resourceIds = input.resourceIds ? [...new Set(input.resourceIds)].sort() : oldRes;
+      const stayChanged = dates.join() !== oldDates.join() || resourceIds.join() !== oldRes.join();
+
+      const data: Prisma.BookingUpdateInput = {};
+      let base = b.totalAmount.plus(b.discountAmount);
+      if (stayChanged) {
+        const ev = await evaluateSelection(
+          tx,
+          { resourceIds, startDate: dates[0]!, nights: dates.length, dates },
+          { channel: "MANUAL", editing: { bookingId: id, keepDates: oldDates } },
+        );
+        await tx.bookingLock.deleteMany({ where: { bookingId: id } });
+        await tx.bookingItem.deleteMany({ where: { bookingId: id } });
+        await tx.bookingItem.createMany({
+          data: ev.quote.lines.map((l) => ({ bookingId: id, resourceId: l.resourceId, date: fromIsoDate(l.date), price: l.price })),
+        });
+        const keys = [...new Set([...(await lockKeysByResource(tx, resourceIds)).values()].flat())];
+        await tx.bookingLock.createMany({ data: keys.flatMap((key) => ev.dates.map((d) => ({ key, date: fromIsoDate(d), bookingId: id }))) });
+        base = new Prisma.Decimal(ev.quote.total);
+        data.startDate = fromIsoDate(ev.dates[0]!);
+        data.endDate = fromIsoDate(ev.endDate);
+        data.priceBreakdown = ev.quote.lines as unknown as Prisma.InputJsonValue;
+      }
+
+      // Discount: a new manual discount, its removal, or the current one kept (re-applied to a changed base).
+      let discount = b.discountAmount;
+      if (input.manualDiscount === null) {
+        discount = new Prisma.Decimal(0);
+        Object.assign(data, { manualDiscountType: null, manualDiscountValue: null, discountCode: null });
+      } else if (input.manualDiscount) {
+        discount = new Prisma.Decimal(manualDiscountAmount(base, input.manualDiscount).amount);
+        Object.assign(data, { manualDiscountType: input.manualDiscount.type, manualDiscountValue: input.manualDiscount.value, discountCode: null });
+      } else if (b.manualDiscountType && b.manualDiscountValue) {
+        discount = new Prisma.Decimal(manualDiscountAmount(base, { type: b.manualDiscountType, value: Number(b.manualDiscountValue) }).amount);
+      } else if (discount.greaterThan(base)) {
+        throw new HttpError(400, "الخصم الحالي أكبر من السعر الجديد؛ عدّل الخصم");
+      }
+      const total = base.sub(discount);
+      const plan = input.paymentPlan ?? b.paymentPlan;
+      if (!total.equals(b.totalAmount) || plan !== b.paymentPlan) {
+        const policy = await getSetting(tx, "bookingPolicy");
+        data.upfrontAmount = upfrontFor(plan, total, policy.depositPercent);
+        data.balanceAlertAt = null; // a changed amount may need a new reminder
+      }
+      data.totalAmount = total;
+      data.discountAmount = discount;
+      data.paymentPlan = plan;
+      if (input.depositTiming) data.depositTiming = input.depositTiming;
+      if (input.securityDeposit !== undefined) data.depositAmount = input.securityDeposit;
+      if (input.guestCount !== undefined) data.guestCount = input.guestCount;
+      if (input.adminNotes !== undefined) data.adminNotes = input.adminNotes;
+
+      const updated = await tx.booking.update({ where: { id }, data });
+      await audit(tx, req, {
+        action: "booking.edit",
+        entityType: "booking",
+        entityId: id,
+        details: {
+          before: { dates: oldDates, resourceIds: oldRes, total: b.totalAmount.toFixed(2), discount: b.discountAmount.toFixed(2), deposit: b.depositAmount.toFixed(2), plan: b.paymentPlan },
+          after: { dates, resourceIds, total: total.toFixed(2), discount: discount.toFixed(2), deposit: updated.depositAmount.toFixed(2), plan },
+        },
+      });
+      const paid = acceptedPaid(b.payments);
+      return { booking: updated, stayChanged, overpaid: paid.greaterThan(total) ? paid.sub(total).toFixed(2) : null };
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") throw new HttpError(409, "عذرًا، حُجز أحد هذه الأيام للتو. اختر يومًا آخر.");
+    throw err;
+  }
 }
 
 export async function changeStatus(db: PrismaClient, req: Request, id: string, to: BookingStatus, reason?: string | null) {

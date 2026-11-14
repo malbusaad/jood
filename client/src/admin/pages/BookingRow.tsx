@@ -5,7 +5,7 @@ import { StatusBadge, dayLabel, money, nightsBetween } from "../ui";
 
 /** One booking in a list: who, when, what, status and money at a glance. */
 export default function BookingRow({ b }: { b: BookingSummary }) {
-  const days = nightsBetween(b.startDate, b.endDate);
+  const days = b.days ?? nightsBetween(b.startDate, b.endDate);
   const due = Number(b.totalAmount) - Number(b.paid);
   return (
     <li>
@@ -19,7 +19,7 @@ export default function BookingRow({ b }: { b: BookingSummary }) {
           </div>
           <p className="mt-0.5 truncate text-sm text-jood-ink/65">
             <span dir="ltr">{b.reference}</span> · {dayLabel(b.startDate)}
-            {days > 1 ? ` (${days} أيام)` : ""} · {b.resources.map((r) => r.name).join("، ")}
+            {days > 1 ? ` (${days} أيام${days !== nightsBetween(b.startDate, b.endDate) ? " متفرقة" : ""})` : ""} · {b.resources.map((r) => r.name).join("، ")}
           </p>
         </div>
         <div className="text-sm sm:text-end">
