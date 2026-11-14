@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { BookingStatus, Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type BookingStatus, type PrismaClient } from "@prisma/client";
 import { HttpError, parse, uuidParam } from "../../lib/http.js";
 import { audit } from "../../lib/audit.js";
 import { addDays, fromIsoDate, isoDate, todayInRiyadh } from "../../lib/dates.js";
@@ -156,8 +156,10 @@ export function bookingsRouter(
         resourceIds: z.array(z.uuid()).min(1).max(20),
         startDate: isoDate,
         nights: z.number().int().min(1).max(30),
-        name: z.string().trim().min(2).max(120),
-        phone: phoneSchema,
+        // A returning customer chosen from the suggestions: name and phone come from their record.
+        guestId: z.uuid().nullable().optional(),
+        name: z.string().trim().min(2).max(120).optional(),
+        phone: phoneSchema.nullable().optional(),
         // Optional for bookings recorded by the owner (e.g. from Gathern), required on the website.
         nationalId: nationalIdSchema.nullable().optional(),
         email: z.email().max(254).nullable().optional(),
@@ -168,7 +170,7 @@ export function bookingsRouter(
         depositTiming: z.enum(["WITH_FIRST_PAYMENT", "BEFORE_CHECKIN"]).optional(),
         /** e.g. 0 when no security deposit is taken for a Gathern booking */
         securityDeposit: z.number().min(0).max(100_000).multipleOf(0.01).nullable().optional(),
-      }),
+      }).refine((v) => v.guestId || (v.name && v.phone), { message: "اختر عميلًا سابقًا أو أدخل الاسم ورقم الجوال", path: ["name"] }),
       req.body,
     );
     const { booking } = await createBooking(
@@ -177,7 +179,8 @@ export function bookingsRouter(
         resourceIds: input.resourceIds,
         startDate: input.startDate,
         nights: input.nights,
-        guest: { name: input.name, phone: input.phone, email: input.email ?? null, nationalId: input.nationalId ?? null },
+        guest: { name: input.name ?? "", phone: input.phone ?? null, email: input.email ?? null, nationalId: input.nationalId ?? null },
+        guestId: input.guestId ?? null,
         guestCount: input.guestCount ?? null,
         adminNotes: input.adminNotes ?? null,
         channel: input.channel,
@@ -427,6 +430,47 @@ export function dashboardRouter(db: PrismaClient) {
 
 export function guestsRouter(db: PrismaClient, box: SecretBox) {
   const router = Router();
+
+  /**
+   * Customer suggestions while typing a name in «حجز يدوي». Searches the existing customer records
+   * (no separate list): any part of the name — every typed word must appear — ignoring Arabic letter
+   * variants (أ/إ/آ/ا, ة/ه, ى/ي, tatweel, diacritics) — or part of the phone number.
+   * Most recently booked customers first.
+   */
+  router.get("/suggest", async (req, res) => {
+    const { q } = parse(z.object({ q: z.string().trim().min(1).max(100) }), req.query);
+    const norm = (v: string) =>
+      v
+        .toLowerCase()
+        .replace(/[أإآ]/g, "ا")
+        .replace(/ى/g, "ي")
+        .replace(/ة/g, "ه")
+        .replace(/[\u064B-\u0652\u0640]/g, "");
+    const words = norm(q).split(/\s+/).filter(Boolean).slice(0, 5);
+    const like = (w: string) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    // Same normalisation in SQL: diacritics and tatweel are dropped (no counterpart in the target string).
+    const nameSql = Prisma.sql`translate(lower("name"), 'أإآىةًٌٍَُِّْـ', 'ااايه')`;
+    const nameMatch = Prisma.join(words.map((w) => Prisma.sql`${nameSql} LIKE ${like(w)}`), " AND ");
+    const digits = phoneFragment(q);
+    const rows = await db.$queryRaw<{ id: string }[]>`
+      SELECT g."id"
+      FROM "guests" g
+      LEFT JOIN LATERAL (SELECT max(b."start_date") AS last FROM "bookings" b WHERE b."guest_id" = g."id") lb ON true
+      WHERE (${nameMatch})${digits ? Prisma.sql` OR g."phone" LIKE ${`%${digits}%`}` : Prisma.empty}
+      ORDER BY lb.last DESC NULLS LAST, g."name"
+      LIMIT 8`;
+    const guests = await db.guest.findMany({
+      where: { id: { in: rows.map((r) => r.id) } },
+      include: { _count: { select: { bookings: true } }, bookings: { select: { startDate: true }, orderBy: { startDate: "desc" }, take: 1 } },
+    });
+    const byId = new Map(guests.map((g) => [g.id, g]));
+    res.json(
+      rows
+        .map((r) => byId.get(r.id))
+        .filter((g) => g !== undefined)
+        .map(({ bookings, _count, ...g }) => ({ ...presentGuest(g, null), bookingCount: _count.bookings, lastStay: bookings[0]?.startDate ?? null })),
+    );
+  });
   router.get("/", async (req, res) => {
     const { q } = parse(z.object({ q: z.string().trim().max(100).optional() }), req.query);
     const guests = await db.guest.findMany({

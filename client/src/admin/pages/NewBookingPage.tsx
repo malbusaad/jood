@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { api } from "../../api/client";
 import type { ResourceRef } from "../types";
 import { Button, Card, ErrorNote, Field, PageTitle, inputClass, money, useApi, useMutation } from "../ui";
+import GuestAutocomplete, { type SuggestedGuest } from "./GuestAutocomplete";
 
 type Q = { available: true; total: number; deposit: number } | { available: false; reason: string };
 
@@ -13,6 +14,8 @@ export default function NewBookingPage() {
   const m = useMutation();
   const [f, setF] = useState({ channel: "GATHERN" as "GATHERN" | "MANUAL", startDate: "", nights: 1, resourceIds: [] as string[], name: "", nationalId: "", phone: "", guestCount: "", adminNotes: "", paymentPlan: "FULL" as "FULL" | "DEPOSIT", depositTiming: "WITH_FIRST_PAYMENT" as "WITH_FIRST_PAYMENT" | "BEFORE_CHECKIN", securityDeposit: "" });
   const [quote, setQuote] = useState<Q | null>(null);
+  /** A returning customer chosen from the suggestions (the booking is linked to their record). */
+  const [guest, setGuest] = useState<SuggestedGuest | null>(null);
 
   const resources = data?.resources.filter((r) => r.active) ?? [];
 
@@ -42,9 +45,14 @@ export default function NewBookingPage() {
       startDate: f.startDate,
       nights: f.nights,
       resourceIds: f.resourceIds,
-      name: f.name,
-      nationalId: f.nationalId.trim() || null,
-      phone: f.phone,
+      ...(guest
+        ? {
+            guestId: guest.id,
+            // Only details missing from the saved record are sent.
+            phone: !guest.phone && f.phone.trim() ? f.phone : null,
+            nationalId: !guest.nationalIdMasked && f.nationalId.trim() ? f.nationalId.trim() : null,
+          }
+        : { name: f.name, nationalId: f.nationalId.trim() || null, phone: f.phone }),
       guestCount: f.guestCount ? Number(f.guestCount) : null,
       adminNotes: f.adminNotes || null,
       paymentPlan: f.paymentPlan,
@@ -90,15 +98,47 @@ export default function NewBookingPage() {
               {quote.available ? `متاح — مبلغ الحجز ${money(quote.total)} + تأمين ${money(quote.deposit)}. لا تُضاف رسوم جاذر إن.` : quote.reason}
             </p>
           )}
-          <Field label="اسم الضيف">
-            <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className={inputClass} />
-          </Field>
-          <Field label="رقم الهوية أو الإقامة (اختياري)">
-            <input inputMode="numeric" dir="ltr" maxLength={10} value={f.nationalId} onChange={(e) => setF({ ...f, nationalId: e.target.value })} className={`${inputClass} text-end`} />
-          </Field>
-          <Field label="الجوال (واتساب)">
-            <input type="tel" dir="ltr" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className={`${inputClass} text-end`} placeholder="05xxxxxxxx" />
-          </Field>
+          {guest ? (
+            <div className="rounded-xl border border-jood-green/15 bg-jood-beige/50 p-3 text-sm md:col-span-2" aria-label="العميل المختار">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p>
+                  <span className="font-medium">{guest.name}</span>
+                  <span className="ms-2 text-xs text-jood-ink/60">عميل سابق · حجوزات: {guest.bookingCount}</span>
+                </p>
+                <Button variant="ghost" onClick={() => { setGuest(null); setF({ ...f, name: "", phone: "", nationalId: "" }); }}>تغيير العميل</Button>
+              </div>
+              <dl className="mt-2 grid gap-1 text-xs text-jood-ink/75 sm:grid-cols-2">
+                <div>الجوال: <span dir="ltr">{guest.phone ? `+${guest.phone}` : "غير مسجل"}</span></div>
+                <div>الهوية / الإقامة: <span dir="ltr">{guest.nationalIdMasked ?? "غير مسجلة"}</span></div>
+                {guest.email && <div>البريد: <span dir="ltr">{guest.email}</span></div>}
+                {guest.notes && <div className="sm:col-span-2">ملاحظات: {guest.notes}</div>}
+              </dl>
+              {(!guest.phone || !guest.nationalIdMasked) && (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {!guest.phone && (
+                    <Field label="الجوال (واتساب) — غير مسجل، يُحفظ للعميل">
+                      <input type="tel" dir="ltr" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className={`${inputClass} text-end`} placeholder="05xxxxxxxx" />
+                    </Field>
+                  )}
+                  {!guest.nationalIdMasked && (
+                    <Field label="رقم الهوية أو الإقامة (اختياري) — يُحفظ للعميل">
+                      <input inputMode="numeric" dir="ltr" maxLength={10} value={f.nationalId} onChange={(e) => setF({ ...f, nationalId: e.target.value })} className={`${inputClass} text-end`} />
+                    </Field>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <GuestAutocomplete value={f.name} onChange={(name) => setF({ ...f, name })} onPick={(g) => { setGuest(g); setF({ ...f, name: g.name, phone: "", nationalId: "" }); }} />
+              <Field label="رقم الهوية أو الإقامة (اختياري)">
+                <input inputMode="numeric" dir="ltr" maxLength={10} value={f.nationalId} onChange={(e) => setF({ ...f, nationalId: e.target.value })} className={`${inputClass} text-end`} />
+              </Field>
+              <Field label="الجوال (واتساب)">
+                <input type="tel" dir="ltr" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} className={`${inputClass} text-end`} placeholder="05xxxxxxxx" />
+              </Field>
+            </>
+          )}
           <Field label="طريقة السداد">
             <select value={f.paymentPlan} onChange={(e) => setF({ ...f, paymentPlan: e.target.value as typeof f.paymentPlan })} className={inputClass}>
               <option value="FULL">كامل المبلغ مقدمًا</option>
@@ -123,7 +163,7 @@ export default function NewBookingPage() {
         </div>
         <div className="mt-5">
           <ErrorNote>{m.error}</ErrorNote>
-          <Button className="mt-3" busy={m.busy} disabled={!quote?.available || !f.name || !f.phone} onClick={submit}>
+          <Button className="mt-3" busy={m.busy} disabled={!quote?.available || (!guest && (!f.name || !f.phone))} onClick={submit}>
             إنشاء الحجز
           </Button>
         </div>
