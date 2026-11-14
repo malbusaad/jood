@@ -23,7 +23,14 @@ export default function BookingRow({ b }: { b: BookingSummary }) {
           </p>
         </div>
         <div className="text-sm sm:text-end">
-          <div>{money(b.totalAmount)}</div>
+          <div>
+            {money(b.totalAmount)}
+            {Number(b.discountAmount ?? 0) > 0 && (
+              <span className="ms-1.5 text-xs text-jood-ink/50" title="السعر الأساسي قبل الخصم">
+                <s>{money(Number(b.totalAmount) + Number(b.discountAmount))}</s>
+              </span>
+            )}
+          </div>
           {b.status !== "CANCELLED" && b.status !== "REJECTED" && b.status !== "EXPIRED" && (
             <div className={`text-xs ${due > 0 ? "text-amber-800" : "text-emerald-700"}`}>{due > 0 ? `متبقٍ ${money(due)}` : "مدفوع"}</div>
           )}

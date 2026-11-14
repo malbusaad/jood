@@ -34,6 +34,8 @@ export interface BookingSummary {
   endDate: string;
   totalAmount: string;
   depositAmount: string;
+  /** Discount already taken off totalAmount (a website code or a manual discount). */
+  discountAmount?: string;
   createdAt: string;
   expiresAt: string | null;
   guest: { id: string; name: string; phone: string | null };
@@ -70,6 +72,8 @@ export interface BookingDetail {
   discountAmount?: string;
   payment?: PaymentSummary;
   discountCode?: string | null;
+  manualDiscountType?: "FIXED" | "PERCENT" | "FINAL_PRICE" | null;
+  manualDiscountValue?: string | null;
   priceBreakdown: { date: string; resourceId: string; resourceName: string; price: string }[];
   guestCount: number | null;
   guestNotes: string | null;

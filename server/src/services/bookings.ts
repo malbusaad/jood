@@ -112,8 +112,32 @@ export async function evaluateSelection(db: Db, sel: Selection, opts: { channel:
   };
 }
 
+/**
+ * The owner's manual discount on a «حجز يدوي», from the server's own base price (the day prices are
+ * never changed). Fixed amount, percentage, or the agreed final price; it can never exceed the base.
+ */
+export function manualDiscountAmount(base: Prisma.Decimal, d: { type: "FIXED" | "PERCENT" | "FINAL_PRICE"; value: number }) {
+  const v = new Prisma.Decimal(d.value);
+  let amount: Prisma.Decimal;
+  if (d.type === "FIXED") amount = v;
+  else if (d.type === "PERCENT") {
+    if (v.greaterThan(100)) throw new HttpError(400, "نسبة الخصم لا تتجاوز 100%");
+    amount = base.mul(v).div(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+  } else {
+    if (v.greaterThan(base)) throw new HttpError(400, `السعر المتفق عليه أكبر من السعر الأساسي (${base.toFixed(2)} ريال)`);
+    amount = base.sub(v);
+  }
+  if (amount.lessThan(0)) throw new HttpError(400, "قيمة الخصم غير صحيحة");
+  if (amount.greaterThan(base)) throw new HttpError(400, `الخصم أكبر من السعر الأساسي (${base.toFixed(2)} ريال)`);
+  return { amount: amount.toFixed(2), total: base.sub(amount).toFixed(2) };
+}
+
 export interface NewBooking extends Selection {
   guest: { name: string; phone: string | null; email?: string | null; nationalId?: string | null };
+  /** «حجز يدوي» only: a discount the owner agreed with the guest (separate from discount codes). */
+  manualDiscount?: { type: "FIXED" | "PERCENT" | "FINAL_PRICE"; value: number } | null;
+  /** «حجز يدوي» only: booking money already received, recorded as a verified payment in the same transaction. */
+  initialPayment?: { amount: number; method: PaymentMethod } | null;
   /** «حجز يدوي» for a returning customer: link to this existing record instead of matching by phone. */
   guestId?: string | null;
   guestCount?: number | null;
@@ -178,6 +202,8 @@ export async function createBooking(
         });
       }
 
+      const manual = input.manualDiscount && input.channel !== "WEBSITE" ? manualDiscountAmount(new Prisma.Decimal(ev.quote.total), input.manualDiscount) : null;
+      if (manual && input.discountCode) throw new HttpError(400, "لا يُجمع خصم يدوي مع كود خصم");
       const discount: AppliedDiscount | null = input.discountCode
         ? computeDiscount(await findCode(tx, input.discountCode), {
             lines: ev.quote.lines,
@@ -191,7 +217,7 @@ export async function createBooking(
       if (plan === "DEPOSIT" && input.channel === "WEBSITE" && !policy.allowDepositPlan) {
         throw new HttpError(400, "خيار العربون غير متاح حاليًا");
       }
-      const bookingTotal = discount ? discount.total : ev.quote.total;
+      const bookingTotal = discount ? discount.total : manual ? manual.total : ev.quote.total;
       // The deposit percentage applies to the booking amount after any discount; the security deposit is separate.
       const upfront = upfrontFor(plan, bookingTotal, policy.depositPercent);
       const securityDeposit = input.channel !== "WEBSITE" && input.securityDeposit != null ? input.securityDeposit : ev.deposit;
@@ -203,9 +229,11 @@ export async function createBooking(
           channel: input.channel,
           startDate: fromIsoDate(input.startDate),
           endDate: fromIsoDate(ev.endDate),
-          totalAmount: discount ? discount.total : ev.quote.total,
-          discountAmount: discount ? discount.amount : 0,
+          totalAmount: bookingTotal,
+          discountAmount: discount ? discount.amount : manual ? manual.amount : 0,
           discountCode: discount?.code ?? null,
+          manualDiscountType: manual ? input.manualDiscount!.type : null,
+          manualDiscountValue: manual ? input.manualDiscount!.value : null,
           depositAmount: securityDeposit,
           paymentPlan: plan,
           upfrontAmount: upfront,
@@ -218,6 +246,25 @@ export async function createBooking(
       });
 
       if (discount) await redeem(tx, discount, booking.id, guest.id);
+      if (input.initialPayment && ctx.req?.user) {
+        // All or nothing: a wrong amount never leaves a booking without its payment, or the reverse.
+        if (new Prisma.Decimal(input.initialPayment.amount).greaterThan(bookingTotal)) {
+          throw new HttpError(400, `المبلغ المستلم أكبر من السعر النهائي (${new Prisma.Decimal(bookingTotal).toFixed(2)} ريال)`);
+        }
+        const p = await tx.payment.create({
+          data: {
+            bookingId: booking.id,
+            purpose: "BOOKING",
+            method: input.initialPayment.method,
+            amount: input.initialPayment.amount,
+            status: "ACCEPTED",
+            note: "مستلم عند تسجيل الحجز",
+            verifiedAt: new Date(),
+            verifiedById: ctx.req.user.id,
+          },
+        });
+        await audit(tx, ctx.req, { action: "payment.verified", entityType: "payment", entityId: p.id, details: { bookingId: booking.id, purpose: "BOOKING", method: input.initialPayment.method, amount: input.initialPayment.amount } });
+      }
       // WhatsApp «request received» (sent only if automation is on; one per booking).
       if (input.channel === "WEBSITE") await onBookingRequested(tx, booking.id);
 
