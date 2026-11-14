@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card, ErrorNote, Field, Loading, PageTitle, inputClass, money, useApi } from "../ui";
 
-interface Month { month: string; bookings: number; bookingValue: number; collected: number; expenses: number; net: number }
+interface Month { month: string; bookings: number; bookingValue: number; discounts?: number; collected: number; expenses: number; net: number }
 interface Report { year: number; months: Month[]; total: Omit<Month, "month">; byCategory: Record<string, number> }
 
 const MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
@@ -37,7 +37,7 @@ export default function ReportsPage() {
             <div className="-mx-5 overflow-x-auto">
               <table className="w-full min-w-[40rem] text-sm">
                 <thead className="text-xs text-jood-ink/60">
-                  <tr><th className="px-5 py-2 text-start">الشهر</th><th className="text-start">الحجوزات</th><th className="text-start">قيمة الحجوزات</th><th className="text-start">المحصّل</th><th className="text-start">المصاريف</th><th className="text-start">الصافي</th><th className="w-40" /></tr>
+                  <tr><th className="px-5 py-2 text-start">الشهر</th><th className="text-start">الحجوزات</th><th className="text-start">قيمة الحجوزات (بعد الخصم)</th><th className="text-start">الخصومات</th><th className="text-start">المحصّل</th><th className="text-start">المصاريف</th><th className="text-start">الصافي</th><th className="w-40" /></tr>
                 </thead>
                 <tbody>
                   {data.months.map((m, i) => (
@@ -45,6 +45,7 @@ export default function ReportsPage() {
                       <td className="px-5 py-2">{MONTHS[i]}</td>
                       <td>{m.bookings || "—"}</td>
                       <td>{m.bookingValue ? money(m.bookingValue) : "—"}</td>
+                      <td className="text-emerald-700">{m.discounts ? money(m.discounts) : "—"}</td>
                       <td>{m.collected ? money(m.collected) : "—"}</td>
                       <td>{m.expenses ? money(m.expenses) : "—"}</td>
                       <td className={m.net < 0 ? "text-red-800" : ""}>{m.bookingValue || m.expenses ? money(m.net) : "—"}</td>
@@ -60,7 +61,7 @@ export default function ReportsPage() {
             <p className="mt-3 text-xs leading-6 text-jood-ink/60">
               <span className="me-1 inline-block size-2 rounded-full bg-jood-green" />قيمة الحجوزات
               <span className="me-1 ms-3 inline-block size-2 rounded-full bg-jood-gold" />المصاريف.
-              قيمة الحجوزات تُحسب في شهر أول يوم للحجز. «المحصّل» هو ما سُجل من دفعات متحقق منها (بعد خصم الاسترداد)، والتأمين لا يُحسب دخلًا.
+              قيمة الحجوزات هي السعر النهائي المتفق عليه بعد أي خصم، وتُحسب في شهر أول يوم للحجز؛ «الخصومات» هي الفرق عن السعر الأساسي ولا تدخل في أي مجموع. «المحصّل» هو ما سُجل من دفعات متحقق منها (بعد خصم الاسترداد)، والتأمين لا يُحسب دخلًا.
             </p>
           </Card>
           {Object.keys(data.byCategory).length > 0 && (

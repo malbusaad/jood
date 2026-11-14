@@ -170,6 +170,16 @@ export function bookingsRouter(
         depositTiming: z.enum(["WITH_FIRST_PAYMENT", "BEFORE_CHECKIN"]).optional(),
         /** e.g. 0 when no security deposit is taken for a Gathern booking */
         securityDeposit: z.number().min(0).max(100_000).multipleOf(0.01).nullable().optional(),
+        /** The price agreed with the guest: a fixed amount, a percentage, or the final price. */
+        manualDiscount: z
+          .object({ type: z.enum(["FIXED", "PERCENT", "FINAL_PRICE"]), value: z.number().min(0).max(1_000_000).multipleOf(0.01) })
+          .nullable()
+          .optional(),
+        /** Money already received when recording the booking (verified by the owner). */
+        initialPayment: z
+          .object({ amount: z.number().positive().max(1_000_000).multipleOf(0.01), method: z.enum(["BANK_TRANSFER", "GATHERN", "CASH"]) })
+          .nullable()
+          .optional(),
       }).refine((v) => v.guestId || (v.name && v.phone), { message: "اختر عميلًا سابقًا أو أدخل الاسم ورقم الجوال", path: ["name"] }),
       req.body,
     );
@@ -187,6 +197,8 @@ export function bookingsRouter(
         paymentPlan: input.paymentPlan,
         depositTiming: input.depositTiming,
         securityDeposit: input.securityDeposit ?? null,
+        manualDiscount: input.manualDiscount ?? null,
+        initialPayment: input.initialPayment ?? null,
       },
       { req, whatsapp: opts.whatsapp, secretBox: opts.secretBox },
     );

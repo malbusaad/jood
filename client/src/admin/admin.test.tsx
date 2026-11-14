@@ -748,8 +748,8 @@ describe("manual booking: previous customers suggested while typing", () => {
     expect(card).toHaveTextContent("••••••6789");
     expect(card).toHaveTextContent("عميلة دائمة");
     expect(screen.queryByLabelText("الجوال (واتساب)")).toBeNull(); // nothing to retype
-    await waitFor(() => expect(screen.getByRole("button", { name: "إنشاء الحجز" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "إنشاء الحجز" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "حفظ الحجز" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "حفظ الحجز" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings")).toBe(true));
     const body = calls.find((c) => c.method === "POST" && c.path === "/api/admin/bookings")!.body as Record<string, unknown>;
     expect(body).toMatchObject({ guestId: "g1", phone: null, nationalId: null });
@@ -765,8 +765,8 @@ describe("manual booking: previous customers suggested while typing", () => {
     fireEvent.change(box, { target: { value: "فاط" } });
     fireEvent.click(await screen.findByRole("option", { name: /فاطمة سعد/ }));
     fireEvent.change(screen.getByLabelText(/الجوال \(واتساب\) — غير مسجل/), { target: { value: "0567778888" } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "إنشاء الحجز" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "إنشاء الحجز" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "حفظ الحجز" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "حفظ الحجز" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings")).toBe(true));
     expect(calls.find((c) => c.method === "POST" && c.path === "/api/admin/bookings")!.body).toMatchObject({ guestId: "g2", phone: "0567778888" });
   });
@@ -778,11 +778,83 @@ describe("manual booking: previous customers suggested while typing", () => {
     const box = screen.getByRole("combobox", { name: "اسم الضيف" });
     fireEvent.change(box, { target: { value: "خالد ناصر العتيبي" } });
     fireEvent.change(screen.getByLabelText("الجوال (واتساب)"), { target: { value: "0599990000" } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "إنشاء الحجز" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "إنشاء الحجز" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "حفظ الحجز" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "حفظ الحجز" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings")).toBe(true));
     const body = calls.find((c) => c.method === "POST" && c.path === "/api/admin/bookings")!.body as Record<string, unknown>;
     expect(body).toMatchObject({ name: "خالد ناصر العتيبي", phone: "0599990000" });
     expect(body).not.toHaveProperty("guestId");
+  });
+
+  it("the booking record shows base, the manual discount, final, paid and remaining", async () => {
+    mockAdminApi({ "GET /api/admin/bookings/b7": () => [200, booking({ id: "b7", totalAmount: "1000.00", discountAmount: "200.00", manualDiscountType: "FINAL_PRICE", manualDiscountValue: "1000.00", paid: "400.00" })] }, OWNER);
+    renderAt("/admin/bookings/b7");
+    expect(await screen.findByText("السعر الأساسي (قبل الخصم)")).toBeInTheDocument();
+    expect(screen.getByText(/سعر نهائي متفق عليه — يدوي/)).toBeInTheDocument();
+    expect(screen.getByText("16.67%")).toBeInTheDocument();
+    expect(screen.getByText("− 200 ريال")).toBeInTheDocument();
+    expect(screen.getByText("المتبقي من مبلغ الحجز").nextSibling).toHaveTextContent("600");
+  });
+
+  async function newCustomerWithStay() {
+    const calls = mockAdminApi(routes([]), OWNER);
+    renderAt("/admin/bookings/new");
+    fireEvent.change(await screen.findByLabelText("تاريخ الدخول"), { target: { value: "2026-12-06" } });
+    fireEvent.change(screen.getByLabelText("تاريخ الخروج"), { target: { value: "2026-12-08" } });
+    fireEvent.click(await screen.findByRole("checkbox", { name: "الاستراحة كاملة" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "اسم الضيف" }), { target: { value: "خالد ناصر العتيبي" } });
+    fireEvent.change(screen.getByLabelText("الجوال (واتساب)"), { target: { value: "0599990000" } });
+    await screen.findByLabelText("السعر الأساسي");
+    return calls;
+  }
+  const posted = (calls: { method: string; path: string; body?: unknown }[]) =>
+    calls.find((c) => c.method === "POST" && c.path === "/api/admin/bookings")!.body as Record<string, unknown>;
+
+  it("computes the days from the check-out date and sends no discount by default", async () => {
+    const calls = await newCustomerWithStay();
+    expect(screen.getByLabelText("عدد الأيام")).toHaveTextContent("2");
+    expect(screen.getByLabelText("السعر النهائي")).toHaveTextContent("950");
+    const summary = screen.getByLabelText("ملخص الحجز");
+    expect(summary).toHaveTextContent("لا يوجد");
+    expect(summary).toHaveTextContent("غير مدفوع");
+    fireEvent.click(screen.getByRole("button", { name: "حفظ الحجز" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings")).toBe(true));
+    expect(posted(calls)).toMatchObject({ nights: 2, manualDiscount: null, initialPayment: null });
+  });
+
+  it("an agreed final price works out the discount and its percentage", async () => {
+    const calls = await newCustomerWithStay();
+    fireEvent.click(screen.getByRole("button", { name: "+ إضافة خصم" }));
+    fireEvent.change(screen.getByLabelText("نوع الخصم"), { target: { value: "FINAL_PRICE" } });
+    fireEvent.change(screen.getByLabelText("السعر النهائي (ريال)"), { target: { value: "800" } });
+    expect(screen.getByRole("group", { name: "الخصم" })).toHaveTextContent("الخصم 150 ريال (15.79%)");
+    expect(screen.getByLabelText("السعر النهائي")).toHaveTextContent("800");
+    fireEvent.change(screen.getByLabelText(/المبلغ المستلم الآن/), { target: { value: "300" } });
+    fireEvent.change(screen.getByLabelText("طريقة الاستلام"), { target: { value: "CASH" } });
+    const summary = screen.getByLabelText("ملخص الحجز");
+    expect(summary).toHaveTextContent("سعر نهائي متفق عليه");
+    expect(summary).toHaveTextContent("مدفوع 300 ريال — المتبقي 500 ريال");
+    fireEvent.click(screen.getByRole("button", { name: "حفظ الحجز" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings")).toBe(true));
+    expect(posted(calls)).toMatchObject({ manualDiscount: { type: "FINAL_PRICE", value: 800 }, initialPayment: { amount: 300, method: "CASH" } });
+  });
+
+  it("percentage discount, and blocks saving when the discount or the payment is too large", async () => {
+    await newCustomerWithStay();
+    fireEvent.click(screen.getByRole("button", { name: "+ إضافة خصم" }));
+    fireEvent.change(screen.getByLabelText("نوع الخصم"), { target: { value: "PERCENT" } });
+    fireEvent.change(screen.getByLabelText("نسبة الخصم (%)"), { target: { value: "10" } });
+    expect(screen.getByLabelText("السعر النهائي")).toHaveTextContent("855");
+    fireEvent.change(screen.getByLabelText("نسبة الخصم (%)"), { target: { value: "120" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("النسبة لا تتجاوز 100%");
+    expect(screen.getByRole("button", { name: "حفظ الحجز" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("نوع الخصم"), { target: { value: "FIXED" } });
+    fireEvent.change(screen.getByLabelText("مبلغ الخصم (ريال)"), { target: { value: "1000" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("الخصم أكبر من السعر الأساسي");
+    expect(screen.getByRole("button", { name: "حفظ الحجز" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("مبلغ الخصم (ريال)"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText(/المبلغ المستلم الآن/), { target: { value: "900" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("المبلغ المستلم أكبر من السعر النهائي");
+    expect(screen.getByRole("button", { name: "حفظ الحجز" })).toBeDisabled();
   });
 });

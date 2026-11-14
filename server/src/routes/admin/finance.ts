@@ -71,16 +71,17 @@ export function reportsRouter(db: PrismaClient) {
     const from = fromIsoDate(`${year}-01-01`);
     const to = fromIsoDate(`${year + 1}-01-01`);
     const [bookings, payments, expenses] = await Promise.all([
-      db.booking.findMany({ where: { status: { in: ["CONFIRMED", "COMPLETED"] }, startDate: { gte: from, lt: to } }, select: { startDate: true, totalAmount: true } }),
+      db.booking.findMany({ where: { status: { in: ["CONFIRMED", "COMPLETED"] }, startDate: { gte: from, lt: to } }, select: { startDate: true, totalAmount: true, discountAmount: true } }),
       db.payment.findMany({ where: { status: "ACCEPTED", purpose: "BOOKING", verifiedAt: { gte: from, lt: to } }, select: { verifiedAt: true, amount: true, kind: true } }),
       db.expense.findMany({ where: { date: { gte: from, lt: to } }, select: { date: true, amount: true, category: true } }),
     ]);
-    const months = Array.from({ length: 12 }, (_, i) => ({ month: `${year}-${String(i + 1).padStart(2, "0")}`, bookings: 0, bookingValue: 0, collected: 0, expenses: 0, net: 0 }));
+    const months = Array.from({ length: 12 }, (_, i) => ({ month: `${year}-${String(i + 1).padStart(2, "0")}`, bookings: 0, bookingValue: 0, discounts: 0, collected: 0, expenses: 0, net: 0 }));
     const at = (d: Date) => months[Number(toIsoDate(d).slice(5, 7)) - 1]!;
     for (const b of bookings) {
       const m = at(b.startDate);
       m.bookings++;
-      m.bookingValue += Number(b.totalAmount);
+      m.bookingValue += Number(b.totalAmount); // the agreed (final) price, after any discount
+      m.discounts += Number(b.discountAmount);
     }
     for (const p of payments) at(p.verifiedAt!).collected += (p.kind === "REFUND" ? -1 : 1) * Number(p.amount);
     const byCategory: Record<string, number> = {};
@@ -91,11 +92,12 @@ export function reportsRouter(db: PrismaClient) {
     const r2 = (n: number) => Math.round(n * 100) / 100;
     for (const m of months) {
       m.bookingValue = r2(m.bookingValue);
+      m.discounts = r2(m.discounts);
       m.collected = r2(m.collected);
       m.expenses = r2(m.expenses);
       m.net = r2(m.bookingValue - m.expenses);
     }
-    const total = months.reduce((t, m) => ({ bookings: t.bookings + m.bookings, bookingValue: r2(t.bookingValue + m.bookingValue), collected: r2(t.collected + m.collected), expenses: r2(t.expenses + m.expenses), net: r2(t.net + m.net) }), { bookings: 0, bookingValue: 0, collected: 0, expenses: 0, net: 0 });
+    const total = months.reduce((t, m) => ({ bookings: t.bookings + m.bookings, bookingValue: r2(t.bookingValue + m.bookingValue), discounts: r2(t.discounts + m.discounts), collected: r2(t.collected + m.collected), expenses: r2(t.expenses + m.expenses), net: r2(t.net + m.net) }), { bookings: 0, bookingValue: 0, discounts: 0, collected: 0, expenses: 0, net: 0 });
     res.json({ year, months, total, byCategory: Object.fromEntries(Object.entries(byCategory).map(([k, v]) => [k, r2(v)])) });
   });
   return router;

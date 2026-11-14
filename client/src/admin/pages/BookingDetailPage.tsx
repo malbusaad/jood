@@ -5,6 +5,7 @@ import type { BookingDetail, BookingStatus, PaymentMethod, PaymentPurpose } from
 import { ACTION_LABEL, CHANNEL, DEPOSIT_STATUS, DEPOSIT_TIMING, METHOD, PAYMENT_STATUS, PLAN, PURPOSE, STATUS } from "../labels";
 import { useUser } from "../auth";
 import { formatDateAr } from "../../lib/format";
+import { DISCOUNT_LABEL, r2 } from "../manualDiscount";
 import { waLink, waMessages } from "../whatsapp";
 import GuestLinkCard from "./GuestLinkCard";
 import DoorCodeCard from "./DoorCodeCard";
@@ -135,14 +136,21 @@ export default function BookingDetailPage() {
             <dl className="mt-3 space-y-1 border-t border-jood-green/10 pt-3 text-sm">
               {Number(b.discountAmount ?? 0) > 0 && (
                 <>
-                  <div className="flex justify-between text-jood-ink/65"><dt>قبل الخصم</dt><dd>{money(total + Number(b.discountAmount))}</dd></div>
-                  <div className="flex justify-between text-emerald-700"><dt>الخصم {b.discountCode && <span dir="ltr">({b.discountCode})</span>}</dt><dd>− {money(Number(b.discountAmount))}</dd></div>
+                  <div className="flex justify-between text-jood-ink/65"><dt>السعر الأساسي (قبل الخصم)</dt><dd>{money(total + Number(b.discountAmount))}</dd></div>
+                  <div className="flex justify-between text-emerald-700">
+                    <dt>
+                      الخصم {b.discountCode ? <span dir="ltr">({b.discountCode})</span> : b.manualDiscountType ? `(${DISCOUNT_LABEL[b.manualDiscountType]}${b.manualDiscountType === "PERCENT" ? ` ${Number(b.manualDiscountValue)}%` : ""} — يدوي)` : null}
+                      <span className="ms-1 text-xs">{r2((Number(b.discountAmount) / (total + Number(b.discountAmount))) * 100)}%</span>
+                    </dt>
+                    <dd>− {money(Number(b.discountAmount))}</dd>
+                  </div>
                 </>
               )}
-              <div className="flex justify-between"><dt>مبلغ الحجز</dt><dd>{money(total)}</dd></div>
+              <div className="flex justify-between"><dt>{Number(b.discountAmount ?? 0) > 0 ? "مبلغ الحجز (السعر النهائي)" : "مبلغ الحجز"}</dt><dd>{money(total)}</dd></div>
               <div className="flex justify-between text-jood-ink/65"><dt>التأمين (مسترد)</dt><dd>{money(deposit)}</dd></div>
               <div className="flex justify-between font-semibold text-jood-green"><dt>الإجمالي المستحق</dt><dd>{money(total + deposit)}</dd></div>
               <div className="flex justify-between"><dt>المدفوع من مبلغ الحجز (متحقق منه)</dt><dd className={paid >= total ? "text-emerald-700" : "text-amber-800"}>{money(paid)}</dd></div>
+              <div className="flex justify-between"><dt>المتبقي من مبلغ الحجز</dt><dd className={paid >= total ? "text-emerald-700" : "text-amber-800"}>{money(Math.max(0, total - paid))}</dd></div>
             </dl>
             {ps && !ps.legacy && (
               <dl className="mt-3 space-y-1 rounded-xl bg-jood-beige/60 p-3 text-sm" aria-label="حالة السداد">
