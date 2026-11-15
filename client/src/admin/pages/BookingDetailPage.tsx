@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { ArrowRight, CheckCircle2, Circle, FileText, MessageCircle, Pencil, Printer } from "lucide-react";
+import { ArrowRight, Pencil, Printer } from "lucide-react";
 import type { BookingDetail, BookingStatus, PaymentMethod, PaymentPurpose } from "../types";
 import { ACTION_LABEL, CHANNEL, DEPOSIT_STATUS, DEPOSIT_TIMING, METHOD, PAYMENT_STATUS, PLAN, PURPOSE, STATUS } from "../labels";
 import { useUser } from "../auth";
 import { formatDateAr } from "../../lib/format";
+import ContractFlowCard from "./ContractFlowCard";
 import { DISCOUNT_LABEL, r2 } from "../manualDiscount";
-import { waLink, waMessages } from "../whatsapp";
 import GuestLinkCard from "./GuestLinkCard";
 import DoorCodeCard from "./DoorCodeCard";
 import { Button, Card, ErrorNote, Field, Loading, PageTitle, StatusBadge, dateTime, inputClass, money, nightsBetween, useApi, useMutation } from "../ui";
@@ -36,8 +36,6 @@ export default function BookingDetailPage() {
   const paid = Number(b.paid);
   const ps = b.payment;
   const resources = [...new Map(b.items.map((i) => [i.resource.id, i.resource])).values()];
-  const messages = waMessages(b);
-  const suggested = b.status === "CONFIRMED" ? "confirmed" : b.contractAcceptedAt ? "payment" : "contract";
   const active = ["NEW", "AWAITING_PAYMENT", "AWAITING_VERIFICATION", "CONFIRMED"].includes(b.status);
 
   async function setStatus(status: BookingStatus) {
@@ -295,47 +293,10 @@ export default function BookingDetailPage() {
         </div>
 
         <div className="space-y-5 print:hidden">
-          <Card title="واتساب">
-            <div className="space-y-2">
-              {messages.map((msg) => (
-                <a
-                  key={msg.key}
-                  href={waLink(b.guest.phone, msg.text)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm transition ${msg.key === suggested ? "bg-[#1f7a4d] text-white hover:bg-[#19663f]" : "border border-jood-green/20 text-jood-green hover:bg-jood-green/5"}`}
-                >
-                  <MessageCircle aria-hidden className="size-4" /> {msg.label}
-                </a>
-              ))}
-              <a href={waLink(b.guest.phone)} target="_blank" rel="noopener noreferrer" className="block text-center text-xs text-jood-green underline">
-                فتح المحادثة بدون رسالة
-              </a>
-            </div>
-          </Card>
+          <ContractFlowCard b={b} busy={m.busy} patch={patch} />
 
           <GuestLinkCard booking={b} onChange={reload} />
           <DoorCodeCard booking={b} onChange={reload} />
-
-          <Card title="العقد">
-            <Link to={`/admin/bookings/${b.id}/contract`} className="flex items-center justify-center gap-2 rounded-xl bg-jood-green px-4 py-2.5 text-sm text-jood-beige hover:bg-jood-green-800">
-              <FileText aria-hidden className="size-4" /> عرض العقد وتنزيله PDF
-            </Link>
-            <ul className="mt-4 space-y-2 text-sm">
-              <li>
-                <button type="button" className="flex w-full items-center gap-2 text-start" onClick={() => patch({ contractSent: !b.contractSentAt })} disabled={m.busy}>
-                  {b.contractSentAt ? <CheckCircle2 className="size-5 text-emerald-600" /> : <Circle className="size-5 text-jood-ink/30" />}
-                  <span>أُرسل العقد للضيف{b.contractSentAt && <span className="block text-xs text-jood-ink/55">{dateTime(b.contractSentAt)}</span>}</span>
-                </button>
-              </li>
-              <li>
-                <button type="button" className="flex w-full items-center gap-2 text-start" onClick={() => patch({ contractAccepted: !b.contractAcceptedAt })} disabled={m.busy}>
-                  {b.contractAcceptedAt ? <CheckCircle2 className="size-5 text-emerald-600" /> : <Circle className="size-5 text-jood-ink/30" />}
-                  <span>ردّ الضيف بـ «موافق»{b.contractAcceptedAt && <span className="block text-xs text-jood-ink/55">{dateTime(b.contractAcceptedAt)}</span>}</span>
-                </button>
-              </li>
-            </ul>
-          </Card>
 
           {b.allowedTransitions.length > 0 && (
             <Card title="الإجراءات">
