@@ -104,7 +104,7 @@ describe("booking detail", () => {
   it("offers a WhatsApp message with the booking details and the contract request", async () => {
     mockAdminApi({ "GET /api/admin/bookings/b1": () => [200, booking()] }, OWNER);
     renderAt("/admin/bookings/b1");
-    const link = await screen.findByRole("link", { name: /تأكيد التفاصيل وإرسال العقد/ });
+    const link = await screen.findByRole("link", { name: /أرسل العقد عبر واتساب/ });
     const href = decodeURIComponent(link.getAttribute("href")!);
     expect(href).toMatch(/^https:\/\/wa\.me\/966501234567\?text=/);
     expect(href).toContain("JD-000007");
@@ -962,5 +962,48 @@ describe("calendar with separate days", () => {
     renderAt("/admin/calendar");
     expect(await screen.findAllByRole("link", { name: /متعب/ })).toHaveLength(2);
     vi.useRealTimers();
+  });
+});
+
+describe("contract and WhatsApp as one ordered flow", () => {
+  function flowRoutes(state: BookingDetail, calls: { body?: unknown }[]) {
+    return {
+      "GET /api/admin/bookings/b1": () => [200, state] as [number, unknown],
+      "PATCH /api/admin/bookings/b1": (body: unknown) => {
+        calls.push({ body });
+        const b = body as { contractSent?: boolean; contractAccepted?: boolean };
+        if (b.contractSent !== undefined) state.contractSentAt = b.contractSent ? "2026-11-15T10:00:00.000Z" : null;
+        if (b.contractAccepted !== undefined) state.contractAcceptedAt = b.contractAccepted ? "2026-11-15T11:00:00.000Z" : null;
+        return [200, state] as [number, unknown];
+      },
+    };
+  }
+
+  it("shows only the next step's button: send contract → guest agreed → transfer request", async () => {
+    const state = booking();
+    const calls: { body?: unknown }[] = [];
+    mockAdminApi(flowRoutes(state, calls), OWNER);
+    renderAt("/admin/bookings/b1");
+    const steps = await screen.findByRole("list", { name: "خطوات العقد والتواصل" });
+    expect(within(steps).getAllByRole("link")).toHaveLength(1);
+    expect(within(steps).queryByRole("link", { name: /أرسل طلب التحويل/ })).toBeNull();
+    expect(within(steps).queryByRole("link", { name: /أرسل تأكيد الحجز/ })).toBeNull();
+    // Opening the contract message marks it as sent.
+    fireEvent.click(within(steps).getByRole("link", { name: /أرسل العقد عبر واتساب/ }));
+    await waitFor(() => expect(calls[0]?.body).toEqual({ contractSent: true }));
+    fireEvent.click(await within(steps).findByRole("button", { name: "الضيف ردّ بـ «موافق»" }));
+    await waitFor(() => expect(calls[1]?.body).toEqual({ contractAccepted: true }));
+    const pay = await within(steps).findByRole("link", { name: /أرسل طلب التحويل/ });
+    expect(decodeURIComponent(pay.getAttribute("href")!)).toContain("1,700 ريال");
+    expect(within(steps).getAllByRole("link")).toHaveLength(1);
+  });
+
+  it("offers the confirmation message only once the booking is confirmed", async () => {
+    const state = booking({ status: "CONFIRMED", statusLabel: "مؤكد", contractSentAt: "2026-11-10T10:00:00.000Z", contractAcceptedAt: "2026-11-10T11:00:00.000Z", paid: "1200.00", allowedTransitions: ["CANCELLED", "COMPLETED"] });
+    mockAdminApi(flowRoutes(state, []), OWNER);
+    renderAt("/admin/bookings/b1");
+    const steps = await screen.findByRole("list", { name: "خطوات العقد والتواصل" });
+    expect(within(steps).getByRole("link", { name: /أرسل تأكيد الحجز/ })).toBeInTheDocument();
+    expect(within(steps).queryByRole("link", { name: /أرسل العقد/ })).toBeNull();
   });
 });
