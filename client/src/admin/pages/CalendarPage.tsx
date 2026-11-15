@@ -54,11 +54,11 @@ export default function CalendarPage() {
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarBooking[]>();
+    const add = (k: string, b: CalendarBooking) => map.set(k, [...(map.get(k) ?? []), b]);
     for (const b of data?.bookings ?? []) {
-      for (let d = new Date(`${b.startDate.slice(0, 10)}T00:00:00`); toIso(d) < b.endDate.slice(0, 10); d = addDays(d, 1)) {
-        const k = toIso(d);
-        map.set(k, [...(map.get(k) ?? []), b]);
-      }
+      // Only the booked days — a booking on separate days leaves the days in between empty.
+      if (b.days?.length) b.days.forEach((k) => add(k, b));
+      else for (let d = new Date(`${b.startDate.slice(0, 10)}T00:00:00`); toIso(d) < b.endDate.slice(0, 10); d = addDays(d, 1)) add(toIso(d), b);
     }
     return map;
   }, [data]);

@@ -443,6 +443,8 @@ export function calendarRouter(db: PrismaClient) {
         guest: b.guest,
         kind: b.items.some((i) => i.resource.kind === "FULL") ? "FULL" : "PART",
         resources: [...new Map(b.items.map((i) => [i.resource.id, i.resource])).values()],
+        // The booked days themselves: a booking on separate days is not shown on the days in between.
+        days: [...new Set(b.items.map((i) => toIsoDate(i.date)))].sort(),
       })),
     });
   });
