@@ -948,3 +948,19 @@ describe("door code for separate days", () => {
     expect(screen.getByText("482915")).toBeInTheDocument();
   });
 });
+
+describe("calendar with separate days", () => {
+  it("marks only the booked days, not the days in between", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-15T09:00:00"));
+    mockAdminApi({
+      "GET /api/admin/calendar": () => [200, { bookings: [{
+        id: "b5", reference: "JD-000005", status: "CONFIRMED", channel: "MANUAL", startDate: "2026-11-17", endDate: "2026-11-21",
+        guest: { name: "متعب", phone: null }, kind: "FULL", resources: [{ id: "full", name: "الاستراحة كاملة", kind: "FULL" }], days: ["2026-11-17", "2026-11-20"],
+      }] }],
+    }, OWNER);
+    renderAt("/admin/calendar");
+    expect(await screen.findAllByRole("link", { name: /متعب/ })).toHaveLength(2);
+    vi.useRealTimers();
+  });
+});

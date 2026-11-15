@@ -156,6 +156,8 @@ export interface CalendarBooking {
   guest: { name: string; phone: string | null };
   kind: "FULL" | "PART";
   resources: ResourceRef[];
+  /** The booked days (separate days are not a continuous period). */
+  days?: string[];
 }
 
 export interface Guest {
