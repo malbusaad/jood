@@ -40,6 +40,8 @@ export interface BookingSummary {
   expiresAt: string | null;
   guest: { id: string; name: string; phone: string | null };
   resources: ResourceRef[];
+  /** Booked days (separate days are not counted from the date span). */
+  days?: number;
   paid: string;
   pendingPayments: number;
 }
@@ -95,6 +97,8 @@ export interface BookingDetail {
   doorCodes: { id: string; status: "ACTIVE" | "DELETED" | "FAILED"; startsAt: string; endsAt: string; error: string | null; createdAt: string; deletedAt: string | null }[];
   /** Clear-text current door code (owner only). */
   doorCode: string | null;
+  /** Owner only: each upcoming booked day's code window (separate days have one each). */
+  doorCodeSchedule?: { startsAt: string; endsAt: string; code: string | null }[];
   lockConfigured: boolean;
   history: { id: string; action: string; details: Record<string, unknown> | null; createdAt: string; user: { name: string } | null }[];
 }

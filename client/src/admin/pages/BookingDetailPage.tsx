@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { ArrowRight, CheckCircle2, Circle, FileText, MessageCircle, Printer } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, FileText, MessageCircle, Pencil, Printer } from "lucide-react";
 import type { BookingDetail, BookingStatus, PaymentMethod, PaymentPurpose } from "../types";
 import { ACTION_LABEL, CHANNEL, DEPOSIT_STATUS, DEPOSIT_TIMING, METHOD, PAYMENT_STATUS, PLAN, PURPOSE, STATUS } from "../labels";
 import { useUser } from "../auth";
@@ -90,6 +90,11 @@ export default function BookingDetailPage() {
       </Link>
       <PageTitle title={`حجز ${b.reference}`}>
         <StatusBadge status={b.status} />
+        {["NEW", "AWAITING_PAYMENT", "AWAITING_VERIFICATION", "CONFIRMED"].includes(b.status) && (
+          <Link to={`/admin/bookings/${b.id}/edit`} className="inline-flex items-center gap-1 rounded-xl border border-jood-green/25 px-3 py-1.5 text-sm text-jood-green hover:bg-jood-green/5 print:hidden">
+            <Pencil aria-hidden className="size-4" /> تعديل الحجز
+          </Link>
+        )}
         <Button variant="ghost" onClick={() => window.print()} className="print:hidden">
           <Printer aria-hidden className="size-4" /> طباعة
         </Button>

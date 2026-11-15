@@ -21,7 +21,19 @@ export default function DoorCodeCard({ booking, onChange }: { booking: BookingDe
           {booking.doorCode && (
             <p dir="ltr" className="rounded-xl bg-jood-green py-3 text-center font-display text-3xl tracking-[0.25em] text-jood-gold">{booking.doorCode}</p>
           )}
-          <p className="text-xs text-jood-ink/60">صالح من {dateTime(active.startsAt)} إلى {dateTime(active.endsAt)}. يظهر للضيف في بوابته حسب الإعدادات.</p>
+          {(booking.doorCodeSchedule?.length ?? 0) > 1 ? (
+            <ul className="space-y-1 text-xs text-jood-ink/70" aria-label="مواعيد عمل الرقم">
+              {booking.doorCodeSchedule!.map((w) => (
+                <li key={w.startsAt} className="flex flex-wrap justify-between gap-2 rounded-lg bg-jood-beige/60 px-3 py-1.5">
+                  <span>يعمل من {dateTime(w.startsAt)} إلى {dateTime(w.endsAt)}</span>
+                  {w.code && w.code !== booking.doorCode && <span dir="ltr" className="font-semibold tracking-widest">{w.code}</span>}
+                </li>
+              ))}
+              <li className="pt-1">يعمل في أيام الحجز فقط، ولا يفتح الباب في الأيام بينها. يظهر للضيف في بوابته حسب الإعدادات.</li>
+            </ul>
+          ) : (
+            <p className="text-xs text-jood-ink/60">صالح من {dateTime(active.startsAt)} إلى {dateTime(active.endsAt)}. يظهر للضيف في بوابته حسب الإعدادات.</p>
+          )}
           {active.error && <p className="text-xs text-red-700">{active.error}</p>}
         </div>
       ) : lastFailed ? (

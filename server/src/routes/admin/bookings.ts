@@ -3,7 +3,8 @@ import { z } from "zod";
 import { Prisma, type BookingStatus, type PrismaClient } from "@prisma/client";
 import { HttpError, parse, uuidParam } from "../../lib/http.js";
 import { audit } from "../../lib/audit.js";
-import { addDays, fromIsoDate, isoDate, todayInRiyadh } from "../../lib/dates.js";
+import { addDays, fromIsoDate, isoDate, todayInRiyadh, toIsoDate } from "../../lib/dates.js";
+import { rescheduleTimed } from "../../services/waAutomation.js";
 import { nationalIdSchema, phoneSchema } from "../../settings/registry.js";
 import {
   STATUS_LABELS,
@@ -12,6 +13,7 @@ import {
   acceptedPaid,
   changeStatus,
   createBooking,
+  editBooking,
   evaluateSelection,
   expireStaleBookings,
   recordRefund,
@@ -20,7 +22,7 @@ import {
 } from "../../services/bookings.js";
 import { buildContract } from "../../services/contract.js";
 import { issueGuestLink, revokeGuestLinks } from "../../services/guestAccess.js";
-import { currentDoorCode, issueDoorCode, revokeDoorCodes } from "../../services/doorCodes.js";
+import { currentDoorCode, doorCodeSchedule, issueDoorCode, revokeDoorCodes } from "../../services/doorCodes.js";
 import { notifyOwner } from "../../services/notifications.js";
 import type { LockClient } from "../../services/ttlock.js";
 import type { SecretBox } from "../../lib/secretBox.js";
@@ -68,13 +70,16 @@ const listInclude = {
   guest: { select: { id: true, name: true, phone: true } },
   items: { select: { resource: { select: { id: true, name: true, kind: true } } }, distinct: ["resourceId"] },
   payments: { select: { amount: true, status: true, purpose: true, kind: true } },
+  _count: { select: { items: true } },
 } satisfies Prisma.BookingInclude;
 
-function summarize<T extends { payments: { amount: Prisma.Decimal; status: string; purpose: string; kind: string }[]; items: { resource: { name: string } }[] }>(b: T) {
-  const { payments, items, ...rest } = b;
+function summarize<T extends { payments: { amount: Prisma.Decimal; status: string; purpose: string; kind: string }[]; items: { resource: { name: string } }[]; _count: { items: number } }>(b: T) {
+  const { payments, items, _count, ...rest } = b;
   return {
     ...rest,
     resources: items.map((i) => i.resource),
+    // Booked days (one item per resource per day); separate days are not counted from the date span.
+    days: items.length ? Math.round(_count.items / items.length) : 0,
     paid: acceptedPaid(payments).toFixed(2),
     pendingPayments: payments.filter((p) => p.status === "PENDING").length,
   };
@@ -140,6 +145,8 @@ export function bookingsRouter(
       guest: presentGuest(b.guest, opts.secretBox),
       // The clear-text door code is shown to the owner only.
       doorCode: req.user!.role === "OWNER" ? await currentDoorCode(db, opts.secretBox, b.id) : null,
+      // Each upcoming booked day's window and code (separate days may each have their own).
+      doorCodeSchedule: req.user!.role === "OWNER" ? await doorCodeSchedule(db, opts.secretBox, b.id) : [],
       lockConfigured: Boolean(opts.lock),
       paid: payment.bookingPaid,
       payment,
@@ -156,6 +163,8 @@ export function bookingsRouter(
         resourceIds: z.array(z.uuid()).min(1).max(20),
         startDate: isoDate,
         nights: z.number().int().min(1).max(30),
+        /** Separate days (e.g. Thursday and Saturday) in one booking; replaces startDate + nights when given. */
+        dates: z.array(isoDate).min(1).max(30).nullable().optional(),
         // A returning customer chosen from the suggestions: name and phone come from their record.
         guestId: z.uuid().nullable().optional(),
         name: z.string().trim().min(2).max(120).optional(),
@@ -189,6 +198,7 @@ export function bookingsRouter(
         resourceIds: input.resourceIds,
         startDate: input.startDate,
         nights: input.nights,
+        dates: input.dates ?? null,
         guest: { name: input.name ?? "", phone: input.phone ?? null, email: input.email ?? null, nationalId: input.nationalId ?? null },
         guestId: input.guestId ?? null,
         guestCount: input.guestCount ?? null,
@@ -206,9 +216,24 @@ export function bookingsRouter(
   });
 
   router.post("/quote", async (req, res) => {
-    const sel = parse(z.object({ resourceIds: z.array(z.uuid()).min(1).max(20), startDate: isoDate, nights: z.number().int().min(1).max(30) }), req.body);
+    const sel = parse(
+      z.object({
+        resourceIds: z.array(z.uuid()).min(1).max(20),
+        startDate: isoDate,
+        nights: z.number().int().min(1).max(30),
+        dates: z.array(isoDate).min(1).max(30).nullable().optional(),
+        /** Quoting a change to this booking: its own days are not counted as taken. */
+        bookingId: z.uuid().optional(),
+      }),
+      req.body,
+    );
     try {
-      const ev = await evaluateSelection(db, sel, { channel: "MANUAL" });
+      let editing: { bookingId: string; keepDates: string[] } | undefined;
+      if (sel.bookingId) {
+        const items = await db.bookingItem.findMany({ where: { bookingId: sel.bookingId }, select: { date: true } });
+        editing = { bookingId: sel.bookingId, keepDates: items.map((i) => toIsoDate(i.date)) };
+      }
+      const ev = await evaluateSelection(db, sel, { channel: "MANUAL", editing });
       res.json({ available: true, lines: ev.quote.lines, total: Number(ev.quote.total), deposit: ev.deposit });
     } catch (err) {
       if (err instanceof HttpError && err.status < 500) return void res.json({ available: false, reason: err.message });
@@ -296,6 +321,34 @@ export function bookingsRouter(
     const updated = await db.booking.update({ where: { id }, data });
     await audit(db, req, { action: "booking.update", entityType: "booking", entityId: id, details: input });
     res.json(updated);
+  });
+
+  /** «تعديل الحجز»: days, booking type, price/discount and details of an active (even confirmed) booking. */
+  router.post("/:id/edit", async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    const input = parse(
+      z.object({
+        resourceIds: z.array(z.uuid()).min(1).max(20).optional(),
+        dates: z.array(isoDate).min(1).max(30).optional(),
+        manualDiscount: z
+          .object({ type: z.enum(["FIXED", "PERCENT", "FINAL_PRICE"]), value: z.number().min(0).max(1_000_000).multipleOf(0.01) })
+          .nullable()
+          .optional(),
+        securityDeposit: z.number().min(0).max(100_000).multipleOf(0.01).optional(),
+        paymentPlan: z.enum(["FULL", "DEPOSIT"]).optional(),
+        depositTiming: z.enum(["WITH_FIRST_PAYMENT", "BEFORE_CHECKIN"]).optional(),
+        guestCount: z.number().int().min(1).max(500).nullable().optional(),
+        adminNotes: z.string().trim().max(2000).nullable().optional(),
+      }),
+      req.body,
+    );
+    const r = await editBooking(db, req, id, input);
+    if (r.stayChanged) {
+      // Scheduled WhatsApp messages and the door code follow the new days.
+      await rescheduleTimed(db);
+      if (r.booking.status === "CONFIRMED") await afterStatus(req, id, "CONFIRMED", r.booking.reference);
+    }
+    res.json({ ...r.booking, overpaid: r.overpaid });
   });
 
   router.post("/:id/payments", async (req, res) => {
