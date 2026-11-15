@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { HttpError } from "../lib/http.js";
-import { toIsoDate, todayInRiyadh } from "../lib/dates.js";
+import { addDays, toIsoDate, todayInRiyadh } from "../lib/dates.js";
 import { formatDateAr, formatSAR, formatTimeAr } from "../lib/format.js";
 import { getSettings } from "../settings/registry.js";
 import type { QuoteLine } from "./pricing.js";
@@ -81,6 +81,13 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
   const days = bookedDays.length || Math.round((booking.endDate.getTime() - booking.startDate.getTime()) / 86_400_000);
   // Separate days (e.g. Thursday and Saturday) are listed one by one.
   const separate = bookedDays.length > 0 && bookedDays.length !== Math.round((booking.endDate.getTime() - booking.startDate.getTime()) / 86_400_000);
+  // Runs of consecutive rented days (Thursday + Friday, then the next Thursday → two runs).
+  const runs: string[][] = [];
+  for (const d of bookedDays) {
+    const run = runs.at(-1);
+    if (run && addDays(run.at(-1)!, 1) === d) run.push(d);
+    else runs.push([d]);
+  }
   const resourceNames = [...new Map(booking.items.map((i) => [i.resourceId, i.resource.name])).values()];
   const total = Number(booking.totalAmount);
   const deposit = Number(booking.depositAmount);
@@ -92,10 +99,20 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
       type: "table",
       rows: [
         ["المحجوز", resourceNames.join("، ")],
-        ["الدخول", `${formatDateAr(start)} — الساعة ${formatTimeAr(s.stay.checkIn)}`],
-        ["الخروج", `${formatDateAr(end)} — الساعة ${formatTimeAr(s.stay.checkOut)}`],
-        ["عدد الأيام", String(days)],
-        ...(separate ? ([["الأيام المحجوزة", bookedDays.map((d) => formatDateAr(d)).join("، ")]] as [string, string][]) : []),
+        ...(separate
+          ? // Separate days: the rented days themselves, each with its own check-in and check-out — not a period.
+            ([
+              ["الأيام المستأجرة", `${days} ${days === 2 ? "يومان" : days <= 10 ? "أيام" : "يومًا"} متفرقة (لا تشمل الأيام بينها)`],
+              ...runs.map((r, i): [string, string] => [
+                `${r.length === 1 ? "اليوم" : "الفترة"} ${i + 1}`,
+                `${r.length === 1 ? formatDateAr(r[0]!) : `من ${formatDateAr(r[0]!)} إلى ${formatDateAr(r.at(-1)!)}`} — الدخول الساعة ${formatTimeAr(s.stay.checkIn)}، والخروج ${formatDateAr(addDays(r.at(-1)!, 1))} الساعة ${formatTimeAr(s.stay.checkOut)}`,
+              ]),
+            ] as [string, string][])
+          : ([
+              ["الدخول", `${formatDateAr(start)} — الساعة ${formatTimeAr(s.stay.checkIn)}`],
+              ["الخروج", `${formatDateAr(end)} — الساعة ${formatTimeAr(s.stay.checkOut)}`],
+              ["عدد الأيام", String(days)],
+            ] as [string, string][])),
         ...(booking.guestCount ? ([["عدد الضيوف المتوقع", String(booking.guestCount)]] as [string, string][]) : []),
         ...(discount > 0
           ? ([
@@ -165,7 +182,8 @@ export async function buildContract(db: PrismaClient, bookingId: string, box: Se
       checkOut: formatTimeAr(s.stay.checkOut),
       deposit: formatSAR(deposit),
       total: formatSAR(total),
-      startDate: formatDateAr(start),
+      // Separate days: {{startDate}} lists the rented days rather than suggesting one continuous period.
+      startDate: separate ? bookedDays.map((d) => formatDateAr(d)).join("، ") : formatDateAr(start),
       endDate: formatDateAr(end),
       paymentDeadline: hours ? `${hours} ساعة` : "المدة التي يحددها الطرف الأول",
     },

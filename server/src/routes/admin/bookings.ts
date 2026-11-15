@@ -22,7 +22,7 @@ import {
 } from "../../services/bookings.js";
 import { buildContract } from "../../services/contract.js";
 import { issueGuestLink, revokeGuestLinks } from "../../services/guestAccess.js";
-import { currentDoorCode, issueDoorCode, revokeDoorCodes } from "../../services/doorCodes.js";
+import { currentDoorCode, doorCodeSchedule, issueDoorCode, revokeDoorCodes } from "../../services/doorCodes.js";
 import { notifyOwner } from "../../services/notifications.js";
 import type { LockClient } from "../../services/ttlock.js";
 import type { SecretBox } from "../../lib/secretBox.js";
@@ -145,6 +145,8 @@ export function bookingsRouter(
       guest: presentGuest(b.guest, opts.secretBox),
       // The clear-text door code is shown to the owner only.
       doorCode: req.user!.role === "OWNER" ? await currentDoorCode(db, opts.secretBox, b.id) : null,
+      // Each upcoming booked day's window and code (separate days may each have their own).
+      doorCodeSchedule: req.user!.role === "OWNER" ? await doorCodeSchedule(db, opts.secretBox, b.id) : [],
       lockConfigured: Boolean(opts.lock),
       paid: payment.bookingPaid,
       payment,

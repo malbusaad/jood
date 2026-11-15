@@ -4,7 +4,7 @@ import request from "supertest";
 import { db, fullResource, makeApp, resetDb, signedIn } from "./helpers.js";
 import { addDays, dayOfWeek, todayInRiyadh } from "../src/lib/dates.js";
 import { makeSecretBox } from "../src/lib/secretBox.js";
-import { ensureDoorCodes, generateDoorCode } from "../src/services/doorCodes.js";
+import { currentDoorCode, doorCodeSchedule, ensureDoorCodes, generateDoorCode } from "../src/services/doorCodes.js";
 import { TTLockError, ttlockClient, ttlockConfigFromEnv, type LockClient } from "../src/services/ttlock.js";
 
 /** In-memory stand-in for the lock, recording what the app asked TTLock to do. */
@@ -321,21 +321,62 @@ describe("door codes for bookings confirmed without the button (e.g. imported re
     expect(c.endsAt.toISOString()).toBe(`${addDays(start, 1)}T01:00:00.000Z`);
   });
 
-  it("for separate days, the code covers only the next day — never the days in between — then the following one", async () => {
+  it("for separate days, every day gets its code in advance — valid on that day only, never in between — with the same number", async () => {
     const lock = fakeLock();
     const s1 = nextSunday();
     const s2 = addDays(s1, 7);
     const b = await importedConfirmed([s1, s2]);
+    expect(await ensureDoorCodes(db, lock, box, noAlerts)).toBe(1);
+    const active = await db.doorCode.findMany({ where: { bookingId: b.id, status: "ACTIVE" }, orderBy: { startsAt: "asc" } });
+    expect(active.map((c) => [c.startsAt.toISOString(), c.endsAt.toISOString()])).toEqual([
+      [`${s1}T11:00:00.000Z`, `${addDays(s1, 1)}T01:00:00.000Z`],
+      [`${s2}T11:00:00.000Z`, `${addDays(s2, 1)}T01:00:00.000Z`],
+    ]);
+    const codes = [...lock.codes.values()].map((c) => c.code);
+    expect(new Set(codes).size).toBe(1); // one number for the guest
+    expect(box.open(active[1]!.codeEncrypted!)).toBe(codes[0]);
+    // Nothing more to do later — not after the first day either.
+    expect(await ensureDoorCodes(db, lock, box, noAlerts)).toBe(0);
+    expect(await ensureDoorCodes(db, lock, box, noAlerts, new Date(`${addDays(s1, 2)}T09:00:00Z`))).toBe(0);
+    expect(lock.calls).toEqual(["add", "add"]);
+    // The owner sees the schedule; the current code is the next day's.
+    expect(await currentDoorCode(db, box, b.id, new Date(`${addDays(s1, 2)}T09:00:00Z`))).toBe(codes[0]);
+    expect(await doorCodeSchedule(db, box, b.id)).toHaveLength(2);
+  });
+
+  it("if the lock refuses a repeated number, that day gets its own code", async () => {
+    const lock = fakeLock();
+    const add = lock.addPasscode.bind(lock);
+    lock.addPasscode = async (p) => {
+      if ([...lock.codes.values()].some((c) => c.code === p.code)) throw new TTLockError("TTLock -3007: passcode exists", -3007);
+      return add(p);
+    };
+    const s1 = nextSunday();
+    const b = await importedConfirmed([s1, addDays(s1, 7)]);
     await ensureDoorCodes(db, lock, box, noAlerts);
-    const first = await db.doorCode.findFirstOrThrow({ where: { bookingId: b.id, status: "ACTIVE" } });
-    expect(first.endsAt.toISOString()).toBe(`${addDays(s1, 1)}T01:00:00.000Z`);
-    // After the first day is over, the next run replaces it with a code for the second day only.
-    const later = new Date(`${addDays(s1, 2)}T09:00:00Z`);
-    expect(await ensureDoorCodes(db, lock, box, noAlerts, later)).toBe(1);
     const active = await db.doorCode.findMany({ where: { bookingId: b.id, status: "ACTIVE" } });
-    expect(active).toHaveLength(1);
-    expect(active[0]!.startsAt.toISOString()).toBe(`${s2}T11:00:00.000Z`);
-    expect(lock.calls).toEqual(["add", "delete", "add"]);
+    expect(active).toHaveLength(2);
+    expect(new Set([...lock.codes.values()].map((c) => c.code)).size).toBe(2);
+  });
+
+  it("a confirmed booking moved to other days gets new codes for the new days; the old ones are deleted", async () => {
+    const lock = fakeLock();
+    const s1 = nextSunday();
+    const app = makeApp({ lock, secretBox: box, publicBaseUrl: "https://jood.example" });
+    const { agent } = await signedIn(app);
+    const full = await fullResource();
+    const r = await agent.post("/api/admin/bookings").send({
+      resourceIds: [full.id], startDate: s1, nights: 2, dates: [s1, addDays(s1, 3)], name: "ضيف أيام متفرقة", phone: "0500000009", channel: "MANUAL", securityDeposit: 0,
+      initialPayment: { amount: 1900, method: "CASH" },
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    await confirm(agent, r.body.id).expect(200);
+    expect(lock.codes.size).toBe(2);
+    const e = await agent.post(`/api/admin/bookings/${r.body.id}/edit`).send({ dates: [addDays(s1, 1)] });
+    expect(e.status, JSON.stringify(e.body)).toBe(200);
+    const windows = [...lock.codes.values()];
+    expect(windows).toHaveLength(1);
+    expect(windows[0]!.startsAt.toISOString()).toBe(`${addDays(s1, 1)}T11:00:00.000Z`);
   });
 
   it("does nothing when the lock is switched off; a TTLock failure alerts the owner once and is not retried in a loop", async () => {

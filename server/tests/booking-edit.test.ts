@@ -54,7 +54,10 @@ describe("separate days in one manual booking", () => {
     const list = (await agent.get("/api/admin/bookings")).body.items;
     expect(list[0].days).toBe(2);
     const contract = JSON.stringify((await agent.get(`/api/admin/bookings/${b.id}/contract`)).body.blocks);
-    expect(contract).toContain("الأيام المحجوزة");
+    expect(contract).toContain("الأيام المستأجرة");
+    expect(contract).toContain("اليوم 1");
+    expect(contract).toContain("اليوم 2");
+    expect(contract).not.toContain('"الدخول"'); // no single check-in → check-out period
   });
 
   it("refuses a separate day that is already taken", async () => {

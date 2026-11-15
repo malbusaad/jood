@@ -928,3 +928,23 @@ describe("separate days and editing a booking", () => {
     await waitFor(() => expect(posted(calls, "/api/admin/bookings/b1/edit")).toMatchObject({ dates: ["2026-12-10", "2026-12-12"], resourceIds: ["full"], manualDiscount: null }));
   });
 });
+
+describe("door code for separate days", () => {
+  it("lists every booked day's window under the code", async () => {
+    mockAdminApi({
+      "GET /api/admin/bookings/b1": () => [200, booking({
+        status: "CONFIRMED", statusLabel: "مؤكد", lockConfigured: true, doorCode: "482915",
+        doorCodes: [{ id: "c1", status: "ACTIVE", startsAt: "2026-12-10T11:00:00.000Z", endsAt: "2026-12-11T01:00:00.000Z", error: null, createdAt: "2026-11-15T10:00:00.000Z", deletedAt: null }],
+        doorCodeSchedule: [
+          { startsAt: "2026-12-10T11:00:00.000Z", endsAt: "2026-12-11T01:00:00.000Z", code: "482915" },
+          { startsAt: "2026-12-12T11:00:00.000Z", endsAt: "2026-12-13T01:00:00.000Z", code: "482915" },
+        ],
+      })],
+    }, OWNER);
+    renderAt("/admin/bookings/b1");
+    const list = await screen.findByLabelText("مواعيد عمل الرقم");
+    expect(within(list).getAllByText(/يعمل من/)).toHaveLength(2);
+    expect(list).toHaveTextContent("لا يفتح الباب في الأيام بينها");
+    expect(screen.getByText("482915")).toBeInTheDocument();
+  });
+});
