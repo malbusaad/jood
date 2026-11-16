@@ -691,11 +691,16 @@ model Expense {
   date        DateTime @db.Date
   amount      Decimal  @db.Decimal(10, 2)
   notes       String?
+  /// مصروف دائم (يتكرر شهريًا): يُضاف تلقائيًا كل شهر في نفس اليوم حتى يُوقف
+  recurring   Boolean  @default(false)
+  /// يربط نسخ المصروف الدائم ببعضها (معرّف أول مصروف في السلسلة)
+  seriesId    String?  @map("series_id") @db.Uuid
   /// رقم المصروف في الملف المستورد (يمنع تكراره عند إعادة الاستيراد)
   externalRef String?  @unique @map("external_ref") @db.VarChar(40)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@index([date])
+  @@index([seriesId])
   @@map("expenses")
 }

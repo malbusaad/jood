@@ -6,15 +6,27 @@ import { audit } from "../../lib/audit.js";
 import { fromIsoDate, isoDate, toIsoDate } from "../../lib/dates.js";
 import type { SecretBox } from "../../lib/secretBox.js";
 import { commitImport, parseWorkbook, planImport } from "../../services/importer.js";
+import { CATEGORY_RULES, EXPENSE_CATEGORIES, OTHER, categorize } from "../../services/expenses.js";
 
-export const EXPENSE_CATEGORIES = ["صيانة", "كهرباء ومياه", "نظافة", "مشتريات", "رواتب", "تسويق", "أخرى"];
+export { EXPENSE_CATEGORIES };
 
 const expenseInput = z.object({
   title: z.string().trim().min(1).max(200),
-  category: z.string().trim().min(1).max(60),
+  /** Empty = chosen automatically from the description. */
+  category: z.string().trim().max(60).optional(),
   date: isoDate,
   amount: z.number().positive().max(10_000_000).multipleOf(0.01),
   notes: z.string().trim().max(2000).nullable().optional(),
+  /** «مصروف دائم»: added again automatically every month on the same day. */
+  recurring: z.boolean().optional(),
+});
+const toData = (input: z.infer<typeof expenseInput>) => ({
+  title: input.title,
+  category: input.category || categorize(input.title),
+  amount: input.amount,
+  notes: input.notes ?? null,
+  date: fromIsoDate(input.date),
+  recurring: input.recurring ?? false,
 });
 
 const present = <E extends { date: Date; amount: { toString(): string } }>(e: E) => ({ ...e, date: toIsoDate(e.date), amount: Number(e.amount.toString()) });
@@ -23,31 +35,74 @@ const present = <E extends { date: Date; amount: { toString(): string } }>(e: E)
 export function expensesRouter(db: PrismaClient) {
   const router = Router();
   router.get("/", async (req, res) => {
-    const q = parse(z.object({ from: isoDate.optional(), to: isoDate.optional(), category: z.string().max(60).optional() }), req.query);
+    const q = parse(
+      z.object({ from: isoDate.optional(), to: isoDate.optional(), category: z.string().max(60).optional(), kind: z.enum(["recurring", "once"]).optional() }),
+      req.query,
+    );
+    const period = q.from || q.to ? { date: { ...(q.from ? { gte: fromIsoDate(q.from) } : {}), ...(q.to ? { lte: fromIsoDate(q.to) } : {}) } } : {};
     const where = {
-      ...(q.from || q.to ? { date: { ...(q.from ? { gte: fromIsoDate(q.from) } : {}), ...(q.to ? { lte: fromIsoDate(q.to) } : {}) } } : {}),
+      ...period,
       ...(q.category ? { category: q.category } : {}),
+      ...(q.kind ? { recurring: q.kind === "recurring" } : {}),
     };
-    const items = await db.expense.findMany({ where, orderBy: [{ date: "desc" }, { createdAt: "desc" }] });
-    const used = await db.expense.findMany({ distinct: ["category"], select: { category: true } });
+    const [items, used, inPeriod, uncategorized] = await Promise.all([
+      db.expense.findMany({ where, orderBy: [{ date: "desc" }, { createdAt: "desc" }] }),
+      db.expense.findMany({ distinct: ["category"], select: { category: true } }),
+      // The breakdown covers the whole period (whatever category is filtered), so the chips stay useful.
+      db.expense.findMany({ where: period, select: { category: true, amount: true, recurring: true } }),
+      db.expense.findMany({ where: { category: OTHER }, select: { title: true } }),
+    ]);
+    const r2 = (x: number) => Math.round(x * 100) / 100;
+    const byCategory: Record<string, number> = {};
+    let recurringTotal = 0;
+    for (const e of inPeriod) {
+      byCategory[e.category] = r2((byCategory[e.category] ?? 0) + Number(e.amount));
+      if (e.recurring) recurringTotal += Number(e.amount);
+    }
     res.json({
       items: items.map(present),
-      total: Math.round(items.reduce((s, e) => s + Number(e.amount), 0) * 100) / 100,
+      total: r2(items.reduce((s, e) => s + Number(e.amount), 0)),
+      periodTotal: r2(inPeriod.reduce((s, e) => s + Number(e.amount), 0)),
+      recurringTotal: r2(recurringTotal),
+      byCategory,
       categories: [...new Set([...EXPENSE_CATEGORIES, ...used.map((u) => u.category)])],
+      // Words → category, so the form can suggest the category while typing (same rules as the server).
+      rules: CATEGORY_RULES,
+      /** «أخرى» expenses whose description now matches a category. */
+      canAutoCategorize: uncategorized.filter((e) => categorize(e.title) !== OTHER).length,
     });
   });
   router.post("/", async (req, res) => {
     const input = parse(expenseInput, req.body);
-    const e = await db.expense.create({ data: { ...input, notes: input.notes ?? null, date: fromIsoDate(input.date) } });
-    await audit(db, req, { action: "expense.create", entityType: "expense", entityId: e.id, details: { amount: input.amount, category: input.category } });
+    let e = await db.expense.create({ data: toData(input) });
+    // A recurring expense starts its own series.
+    if (e.recurring) e = await db.expense.update({ where: { id: e.id }, data: { seriesId: e.id } });
+    await audit(db, req, { action: "expense.create", entityType: "expense", entityId: e.id, details: { amount: input.amount, category: e.category, recurring: e.recurring } });
     res.status(201).json(present(e));
   });
   router.put("/:id", async (req, res) => {
     const { id } = parse(uuidParam, req.params);
     const input = parse(expenseInput, req.body);
-    const e = await db.expense.update({ where: { id }, data: { ...input, notes: input.notes ?? null, date: fromIsoDate(input.date) } });
-    await audit(db, req, { action: "expense.update", entityType: "expense", entityId: id, details: { amount: input.amount, category: input.category } });
+    const before = await db.expense.findUnique({ where: { id } });
+    if (!before) throw new HttpError(404, "المصروف غير موجود");
+    const data = toData(input);
+    const e = await db.expense.update({ where: { id }, data: { ...data, ...(data.recurring && !before.seriesId ? { seriesId: id } : {}) } });
+    await audit(db, req, { action: "expense.update", entityType: "expense", entityId: id, details: { amount: input.amount, category: e.category, recurring: e.recurring } });
     res.json(present(e));
+  });
+  /** «تصنيف تلقائي»: puts each «أخرى» expense whose description matches a category into it. */
+  router.post("/auto-categorize", async (req, res) => {
+    const others = await db.expense.findMany({ where: { category: OTHER }, select: { id: true, title: true } });
+    let updated = 0;
+    for (const e of others) {
+      const c = categorize(e.title);
+      if (c !== OTHER) {
+        await db.expense.update({ where: { id: e.id }, data: { category: c } });
+        updated++;
+      }
+    }
+    await audit(db, req, { action: "expense.auto_categorize", entityType: "expense", entityId: "bulk", details: { updated } });
+    res.json({ updated });
   });
   router.delete("/:id", async (req, res) => {
     const { id } = parse(uuidParam, req.params);

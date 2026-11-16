@@ -154,7 +154,11 @@ describe("manual booking with a manual discount", () => {
     await agent.post(`/api/admin/bookings/${r.body.id}/status`).send({ status: "CONFIRMED" }).expect(200);
     const rep = (await agent.get(`/api/admin/reports/monthly?year=${THU.slice(0, 4)}`)).body;
     const m = rep.months.find((x: { month: string }) => x.month === THU.slice(0, 7));
-    expect(m).toMatchObject({ bookings: 1, bookingValue: 1000, discounts: 200, collected: 1000 });
+    expect(m).toMatchObject({ bookings: 1, bookingValue: 1000, discounts: 200 });
     expect(rep.total.discounts).toBe(200);
+    // Money collected counts in the month it was received (today), which may differ from the booking's month.
+    const today = todayInRiyadh();
+    const payRep = (await agent.get(`/api/admin/reports/monthly?year=${today.slice(0, 4)}`)).body;
+    expect(payRep.months.find((x: { month: string }) => x.month === today.slice(0, 7)).collected).toBe(1000);
   });
 });
