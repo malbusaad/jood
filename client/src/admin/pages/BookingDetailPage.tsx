@@ -6,6 +6,7 @@ import { ACTION_LABEL, CHANNEL, DEPOSIT_STATUS, DEPOSIT_TIMING, METHOD, PAYMENT_
 import { useUser } from "../auth";
 import { formatDateAr } from "../../lib/format";
 import ContractFlowCard from "./ContractFlowCard";
+import DeleteBookingCard from "./DeleteBookingCard";
 import { DISCOUNT_LABEL, r2 } from "../manualDiscount";
 import GuestLinkCard from "./GuestLinkCard";
 import DoorCodeCard from "./DoorCodeCard";
@@ -338,6 +339,7 @@ export default function BookingDetailPage() {
               حفظ
             </Button>
           </Card>
+          {owner && <DeleteBookingCard b={b} />}
         </div>
       </div>
     </>

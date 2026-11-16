@@ -617,22 +617,40 @@ describe("previous records import, expenses and reports", () => {
     expect(await screen.findByText(/أُضيف 70 حجزًا و48 مصروفًا/)).toBeInTheDocument();
   });
 
-  it("adds an expense", async () => {
+  it("adds a recurring expense with its category suggested from the description", async () => {
     const calls = mockAdminApi(
       {
-        "GET /api/admin/expenses": () => [200, { items: [], total: 0, categories: ["صيانة", "أخرى"] }],
+        "GET /api/admin/expenses": () => [200, {
+          items: [], total: 0, periodTotal: 1500, recurringTotal: 1500, byCategory: { رواتب: 1500 }, categories: ["صيانة", "رواتب", "أخرى"], canAutoCategorize: 0,
+          rules: [{ category: "صيانة", words: ["صيانه", "مكيف"] }, { category: "رواتب", words: ["راتب", "حارس"] }],
+        }],
         "POST /api/admin/expenses": (body) => [201, body],
       },
       OWNER,
     );
     renderAt("/admin/expenses");
-    fireEvent.click(await screen.findByRole("button", { name: /مصروف/ }));
-    fireEvent.change(screen.getByLabelText("البند / الوصف"), { target: { value: "صيانة المكيف" } });
+    expect(await screen.findByLabelText("ملخص المصاريف")).toHaveTextContent("مصاريف دائمة1,500");
+    fireEvent.click(screen.getByRole("button", { name: /^مصروف$/ }));
+    fireEvent.change(screen.getByLabelText(/البند \/ الوصف/), { target: { value: "صيانة المكيف" } });
+    expect(screen.getByText(/يُصنَّف تلقائيًا: صيانة/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("المبلغ (ريال)"), { target: { value: "350" } });
-    fireEvent.change(screen.getByLabelText("التصنيف", { selector: "input" }), { target: { value: "صيانة" } });
+    fireEvent.click(screen.getByRole("radio", { name: /مصروف دائم \(شهري\)/ }));
     fireEvent.click(screen.getByRole("button", { name: "حفظ" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
-    expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ title: "صيانة المكيف", category: "صيانة", amount: 350 });
+    const body = calls.find((c) => c.method === "POST")!.body as Record<string, unknown>;
+    expect(body).toMatchObject({ title: "صيانة المكيف", amount: 350, recurring: true });
+    expect(body.category).toBeUndefined(); // the server categorizes
+  });
+
+  it("offers to categorize «أخرى» expenses automatically", async () => {
+    const calls = mockAdminApi({
+      "GET /api/admin/expenses": () => [200, { items: [], total: 0, periodTotal: 0, recurringTotal: 0, byCategory: {}, categories: ["أخرى"], rules: [], canAutoCategorize: 4 }],
+      "POST /api/admin/expenses/auto-categorize": () => [200, { updated: 4 }],
+    }, OWNER);
+    renderAt("/admin/expenses");
+    expect(await screen.findByText(/4 مصروف في «أخرى»/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "صنّفها الآن" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/admin/expenses/auto-categorize")).toBe(true));
   });
 
   it("shows the monthly report totals", async () => {
@@ -664,7 +682,7 @@ describe("photos and video", () => {
     );
     renderAt("/admin/media");
     expect(await screen.findByRole("img", { name: "المجلس" })).toHaveAttribute("src", "/api/media/photo-1.jpg");
-    expect(screen.getAllByText("الرئيسية", { selector: "span" }).length).toBe(1);
+    expect(within(screen.getByRole("main")).getAllByText("الرئيسية", { selector: "span" }).length).toBe(1);
     expect(screen.getByRole("button", { name: "جعل الصورة 2 الرئيسية" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "جعل الصورة 1 الرئيسية" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH" && (c.body as { isHero?: boolean }).isHero)).toBe(true));
@@ -1005,5 +1023,59 @@ describe("contract and WhatsApp as one ordered flow", () => {
     const steps = await screen.findByRole("list", { name: "خطوات العقد والتواصل" });
     expect(within(steps).getByRole("link", { name: /أرسل تأكيد الحجز/ })).toBeInTheDocument();
     expect(within(steps).queryByRole("link", { name: /أرسل العقد/ })).toBeNull();
+  });
+});
+
+describe("customers list", () => {
+  const guests = [
+    { id: "g1", name: "سارة محمد", phone: "966501112222", email: null, notes: null, nationalIdMasked: null, createdAt: "2025-01-01T00:00:00Z", bookingCount: 3, lastStay: "2026-10-01" },
+    { id: "g2", name: "أحمد علي", phone: null, email: null, notes: null, nationalIdMasked: null, createdAt: "2025-02-01T00:00:00Z", bookingCount: 1, lastStay: "2026-11-01" },
+  ];
+  it("shows stats, marks returning customers, filters and searches as you type", async () => {
+    const searched: string[] = [];
+    mockAdminApi({ "GET /api/admin/guests": (_b: unknown, url: URL) => { searched.push(url.searchParams.get("q") ?? ""); return [200, guests]; } }, OWNER);
+    renderAt("/admin/guests");
+    const list = await screen.findByRole("list", { name: "قائمة العملاء" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(list).getByText("عميل دائم")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "واتساب سارة محمد" })).toHaveAttribute("href", "https://wa.me/966501112222");
+    fireEvent.click(screen.getByRole("button", { name: /عملاء دائمون/ }));
+    expect(within(screen.getByRole("list", { name: "قائمة العملاء" })).getAllByRole("listitem")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("بحث عن ضيف"), { target: { value: "سارة" } });
+    await waitFor(() => expect(searched).toContain("سارة"));
+  });
+});
+
+describe("deleting a cancelled booking", () => {
+  it("asks for the booking number before deleting, then goes back to the list", async () => {
+    const calls = mockAdminApi({
+      "GET /api/admin/bookings/b1": () => [200, booking({ status: "CANCELLED", statusLabel: "ملغي", allowedTransitions: [] })],
+      "DELETE /api/admin/bookings/b1": () => [200, { reference: "JD-000007", guestDeleted: false }],
+      "GET /api/admin/bookings": () => [200, { items: [], total: 0, page: 1, pageSize: 30 }],
+    }, OWNER);
+    renderAt("/admin/bookings/b1");
+    fireEvent.click(await screen.findByRole("button", { name: /حذف الحجز نهائيًا/ }));
+    const go = screen.getByRole("button", { name: "حذف نهائي" });
+    expect(go).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("رقم الحجز للتأكيد"), { target: { value: "jd-000007" } });
+    expect(go).toBeEnabled();
+    fireEvent.click(go);
+    await waitFor(() => expect(calls.find((c) => c.method === "DELETE")?.body).toEqual({ reference: "jd-000007", deleteGuest: false }));
+  });
+
+  it("is not offered for an active booking or to staff", async () => {
+    mockAdminApi({ "GET /api/admin/bookings/b1": () => [200, booking()] }, OWNER);
+    renderAt("/admin/bookings/b1");
+    await screen.findByText(/JD-000007/);
+    expect(screen.queryByRole("button", { name: /حذف الحجز نهائيًا/ })).toBeNull();
+  });
+});
+
+describe("expenses month range", () => {
+  it("asks for the real last day of the month", async () => {
+    const { monthEnd } = await import("./pages/ExpensesPage");
+    expect(monthEnd("2026-11")).toBe("2026-11-30");
+    expect(monthEnd("2028-02")).toBe("2028-02-29");
+    expect(monthEnd("2026-12")).toBe("2026-12-31");
   });
 });

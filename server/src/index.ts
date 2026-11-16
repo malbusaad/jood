@@ -6,6 +6,7 @@ import { createApp } from "./app.js";
 import { metaTemplateSender, metaWhatsAppSender, notifyOwner, whatsAppConfigFromEnv } from "./services/notifications.js";
 import { processDueMessages } from "./services/waAutomation.js";
 import { ensureDoorCodes } from "./services/doorCodes.js";
+import { ensureRecurringExpenses } from "./services/expenses.js";
 import { webPushSend } from "./services/push.js";
 import { alertUnpaidBalances, expireStaleBookings } from "./services/bookings.js";
 import { ttlockClient, ttlockConfigFromEnv } from "./services/ttlock.js";
@@ -57,6 +58,11 @@ const ensureCodes = () =>
   ).catch((err) => console.error("[door-codes]", err instanceof Error ? err.message : err));
 setTimeout(ensureCodes, 15_000).unref();
 setInterval(ensureCodes, 5 * 60 * 1000).unref();
+
+// «مصروف دائم»: adds this month's copy of each recurring expense on its day (checked hourly).
+const recurringExpenses = () => ensureRecurringExpenses(prisma).catch((err) => console.error("[recurring-expenses]", err instanceof Error ? err.message : err));
+setTimeout(recurringExpenses, 20_000).unref();
+setInterval(recurringExpenses, 60 * 60 * 1000).unref();
 
 // Guest WhatsApp messages: sends what is due, every minute (state lives in the database).
 const waTimer = setInterval(() => {

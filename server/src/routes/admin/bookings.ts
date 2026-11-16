@@ -323,6 +323,49 @@ export function bookingsRouter(
     res.json(updated);
   });
 
+  /**
+   * «حذف نهائي» of a closed booking (cancelled, rejected or expired) — owner only, typing the booking
+   * number to confirm. Its days, payments, messages and links go with it (the days are already free).
+   * A record of what was deleted stays in the audit log. The customer is removed too only when asked
+   * and they have no other booking.
+   */
+  router.delete("/:id", requireRole("OWNER"), async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    const input = parse(z.object({ reference: z.string().trim().max(20), deleteGuest: z.boolean().optional() }), req.body ?? {});
+    const result = await db.$transaction(async (tx) => {
+      const b = await tx.booking.findUnique({
+        where: { id },
+        include: { guest: { select: { id: true, name: true } }, payments: { select: { amount: true, status: true, kind: true, purpose: true } }, doorCodes: { where: { status: "ACTIVE" }, select: { id: true } } },
+      });
+      if (!b) throw new HttpError(404, "الحجز غير موجود");
+      if (!["CANCELLED", "REJECTED", "EXPIRED"].includes(b.status)) throw new HttpError(409, "يُحذف نهائيًا الحجز الملغي أو المرفوض أو المنتهي فقط؛ ألغِ الحجز أولًا");
+      if (input.reference.toUpperCase() !== b.reference) throw new HttpError(400, `اكتب رقم الحجز ${b.reference} للتأكيد`);
+      if (b.doorCodes.length > 0) throw new HttpError(409, "للحجز رقم باب لم يُحذف من القفل بعد؛ احذفه من بطاقة رقم الباب أولًا");
+      await audit(tx, req, {
+        action: "booking.delete",
+        entityType: "booking",
+        entityId: id,
+        details: {
+          reference: b.reference,
+          guest: b.guest.name,
+          status: b.status,
+          startDate: toIsoDate(b.startDate),
+          total: b.totalAmount.toFixed(2),
+          payments: b.payments.filter((p) => p.status === "ACCEPTED").map((p) => `${p.kind === "REFUND" ? "-" : ""}${p.amount.toFixed(2)} ${p.purpose}`),
+        },
+      });
+      await tx.booking.delete({ where: { id } });
+      let guestDeleted = false;
+      if (input.deleteGuest && (await tx.booking.count({ where: { guestId: b.guest.id } })) === 0) {
+        await tx.guest.delete({ where: { id: b.guest.id } });
+        await audit(tx, req, { action: "guest.delete", entityType: "guest", entityId: b.guest.id, details: { name: b.guest.name } });
+        guestDeleted = true;
+      }
+      return { reference: b.reference, guestDeleted };
+    });
+    res.json(result);
+  });
+
   /** «تعديل الحجز»: days, booking type, price/discount and details of an active (even confirmed) booking. */
   router.post("/:id/edit", async (req, res) => {
     const { id } = parse(uuidParam, req.params);

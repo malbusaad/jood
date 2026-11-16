@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Plus,
   Settings,
   ShieldCheck,
   CalendarHeart,
@@ -126,31 +127,62 @@ export default function AdminLayout() {
     .map((g) => ({ ...g, items: g.items.filter((n) => !n.ownerOnly || user.role === "OWNER") }))
     .filter((g) => g.items.length > 0);
 
+  const initials = user.name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("");
   const sidebar = (
-    <nav aria-label="قائمة الإدارة" className="flex flex-col gap-4 p-3">
-      {visible.map((g) => (
-        <div key={g.title ?? "home"}>
-          {g.title && <p className="mb-1 px-3 text-[11px] font-medium tracking-wide text-jood-gold/70">{g.title}</p>}
-          <div className="flex flex-col gap-0.5">
-            {g.items.map(({ to, label, Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === "/admin"}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition ${isActive ? "bg-jood-gold/20 text-jood-gold" : "text-jood-beige/80 hover:bg-white/5"}`
-                }
-              >
-                <Icon aria-hidden className="size-4" />
-                {label}
-              </NavLink>
-            ))}
-          </div>
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-3 border-b border-white/10 px-4 py-4">
+        <span aria-hidden className="grid size-10 place-items-center rounded-xl bg-gradient-to-br from-jood-gold to-jood-gold-light font-display text-lg font-bold text-jood-green-950 shadow-inner">ج</span>
+        <div className="leading-tight">
+          <p className="font-display text-base font-semibold text-jood-beige">استراحة الجود</p>
+          <p className="text-[11px] text-jood-beige/50">لوحة الإدارة</p>
         </div>
-      ))}
-    </nav>
+      </div>
+      <div className="px-3 pt-3">
+        <Link to="/admin/bookings/new" className="flex items-center justify-center gap-2 rounded-xl bg-jood-gold px-3 py-2.5 text-sm font-semibold text-jood-green-950 shadow-sm transition hover:bg-jood-gold-light">
+          <Plus aria-hidden className="size-4" /> حجز جديد
+        </Link>
+      </div>
+      <nav aria-label="قائمة الإدارة" className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        {visible.map((g) => (
+          <div key={g.title ?? "home"}>
+            {g.title && <p className="mb-1.5 px-2 text-[10.5px] font-semibold tracking-wider text-jood-gold/60">{g.title}</p>}
+            <div className="flex flex-col gap-0.5">
+              {g.items.map(({ to, label, Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === "/admin"}
+                  className={({ isActive }) =>
+                    `group relative flex items-center gap-3 rounded-xl px-2 py-1.5 text-sm transition ${isActive ? "bg-white/10 font-medium text-white" : "text-jood-beige/75 hover:bg-white/5 hover:text-jood-beige"}`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && <span aria-hidden className="absolute inset-y-2 start-0 w-1 rounded-full bg-jood-gold" />}
+                      <span aria-hidden className={`grid size-8 shrink-0 place-items-center rounded-lg transition ${isActive ? "bg-jood-gold text-jood-green-950" : "bg-white/5 text-jood-gold/80 group-hover:bg-white/10"}`}>
+                        <Icon className="size-4" />
+                      </span>
+                      <span className="flex-1">{label}</span>
+                      {to === "/admin/notifications" && unread > 0 && (
+                        <span aria-hidden className="rounded-full bg-jood-gold px-1.5 text-[11px] font-semibold text-jood-green-950">{unread > 99 ? "99+" : unread}</span>
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        ))}
+      </nav>
+      <div className="flex items-center gap-3 border-t border-white/10 px-4 py-3">
+        <span aria-hidden className="grid size-9 place-items-center rounded-full bg-white/10 text-sm font-semibold text-jood-gold">{initials}</span>
+        <div className="min-w-0 flex-1 leading-tight">
+          <p className="truncate text-sm text-jood-beige">{user.name}</p>
+          <p className="text-[11px] text-jood-beige/50">{user.role === "OWNER" ? "المالك" : "موظف"}</p>
+        </div>
+      </div>
+    </div>
   );
-
 
   return (
     <div className="min-h-dvh bg-[#f7f5f0] text-jood-ink">
@@ -159,7 +191,7 @@ export default function AdminLayout() {
           <button type="button" className="rounded-md p-1.5 lg:hidden" aria-label={open ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
             {open ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
-          <Link to="/admin" className="font-display text-lg font-semibold">
+          <Link to="/admin" className="font-display text-lg font-semibold lg:hidden">
             إدارة استراحة الجود
           </Link>
         </div>
@@ -192,11 +224,11 @@ export default function AdminLayout() {
       </header>
 
       <div className="flex">
-        <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-56 shrink-0 overflow-y-auto bg-jood-green print:hidden lg:block">{sidebar}</aside>
+        <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 bg-gradient-to-b from-jood-green to-jood-green-950 print:hidden lg:block">{sidebar}</aside>
         {open && (
           <div className="fixed inset-0 top-14 z-20 lg:hidden">
-            <button type="button" aria-label="إغلاق القائمة" className="absolute inset-0 bg-black/30" onClick={() => setOpen(false)} />
-            <aside className="relative h-full w-64 overflow-y-auto bg-jood-green">{sidebar}</aside>
+            <button type="button" aria-label="إغلاق القائمة" className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" onClick={() => setOpen(false)} />
+            <aside className="relative h-full w-72 max-w-[85vw] bg-gradient-to-b from-jood-green to-jood-green-950 shadow-2xl">{sidebar}</aside>
           </div>
         )}
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
