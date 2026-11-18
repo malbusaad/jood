@@ -265,7 +265,7 @@ export default function NewBookingPage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="المبلغ المستلم الآن (اختياري)" hint="يُسجّل كدفعة متحقق منها. اتركه فارغًا إن لم يُستلم شيء.">
+              <Field label="العربون المستلم (اختياري)" hint="إن استلمته يُسجَّل ويتأكد الحجز مباشرة، والمتبقي يُدفع قبل الدخول. اتركه فارغًا إن لم يُستلم شيء.">
                 <input type="number" min={0} step="0.01" inputMode="decimal" value={pay.amount} onChange={(e) => setPay({ ...pay, amount: e.target.value })} className={inputClass} />
               </Field>
               {paidNow > 0 && (
@@ -316,7 +316,8 @@ export default function NewBookingPage() {
           <Row k="السعر الأساسي" v={base == null ? "—" : money(base)} />
           <Row k="الخصم" v={discountOk && discountOk.amount > 0 ? `${money(discountOk.amount)} (${discountOk.percent}% · ${DISCOUNT_LABEL[disc.type]})` : "لا يوجد"} />
           <Row k="السعر النهائي" v={final == null ? "—" : money(final)} strong />
-          <Row k="حالة الدفع" v={final == null ? "—" : paidNow <= 0 ? `غير مدفوع — المتبقي ${money(final)}` : remaining! <= 0 ? "مدفوع بالكامل" : `مدفوع ${money(paidNow)} — المتبقي ${money(remaining!)}`} />
+          <Row k="حالة الدفع" v={final == null ? "—" : paidNow <= 0 ? `لم يُستلم عربون — المتبقي ${money(final)}` : remaining! <= 0 ? "مدفوع بالكامل" : `عربون ${money(paidNow)} — المتبقي ${money(remaining!)}`} />
+          <Row k="حالة الحجز بعد الحفظ" v={paidNow > 0 ? "مؤكد" : "بانتظار العربون"} strong={paidNow > 0} />
         </dl>
         {quote?.available && <p className="mt-3 text-xs text-jood-ink/60">التأمين المسترد يُحسب منفصلًا عن سعر الحجز. لا تُضاف رسوم جاذر إن.</p>}
         <div className="mt-5">

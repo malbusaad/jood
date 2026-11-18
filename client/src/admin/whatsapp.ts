@@ -14,16 +14,14 @@ export function waMessages(b: BookingDetail) {
   const days = nightsBetween(b.startDate, b.endDate);
   const when = `${formatDateAr(b.startDate)}${days > 1 ? ` (${days} أيام)` : ""}`;
   const amounts = `مبلغ الحجز ${money(b.totalAmount)}${Number(b.depositAmount) > 0 ? ` + تأمين ${money(b.depositAmount)} يُسترد بعد المغادرة` : ""}`;
+  // What the guest is asked to transfer to confirm: the agreed deposit, or the booking amount.
+  const deposit = b.payment?.plan === "DEPOSIT" ? Number(b.payment.upfrontAmount) : null;
+  const ask = deposit ? `العربون ${money(deposit)}` : `مبلغ الحجز ${money(b.totalAmount)}`;
   return [
     {
       key: "contract",
-      label: "تأكيد التفاصيل وإرسال العقد",
-      text: `مرحبًا ${name}، معك استراحة الجود بخصوص طلب الحجز رقم ${b.reference}.\n${what} — ${when}.\n${amounts}.\nأرسلت لك عقد الحجز، ونرجو قراءته والرد بكلمة «موافق» للموافقة عليه.`,
-    },
-    {
-      key: "payment",
-      label: "طلب التحويل",
-      text: `شكرًا ${name} على موافقتك. نرجو تحويل ${money(Number(b.totalAmount) + Number(b.depositAmount))} لإتمام الحجز رقم ${b.reference}، وإرسال صورة الإيصال هنا. يتأكد الحجز بعد التحقق من وصول المبلغ.`,
+      label: "إرسال العقد وطلب العربون",
+      text: `مرحبًا ${name}، معك استراحة الجود بخصوص طلب الحجز رقم ${b.reference}.\n${what} — ${when}.\n${amounts}.\nأرفقت لك عقد الحجز للاطلاع. لتأكيد الحجز نرجو تحويل ${ask} وإرسال صورة الإيصال هنا، ويتأكد الحجز مباشرة بعد وصول المبلغ.`,
     },
     {
       key: "confirmed",

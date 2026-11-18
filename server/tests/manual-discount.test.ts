@@ -107,7 +107,7 @@ describe("manual booking with a manual discount", () => {
     // Full amount received: the booking can be confirmed as usual.
     const full = await manual(agent, { manualDiscount: { type: "FIXED", value: 200 }, initialPayment: { amount: 1000, method: "BANK_TRANSFER" }, securityDeposit: 0 }, addDays(THU, 7));
     expect(full.status).toBe(201);
-    expect((await agent.post(`/api/admin/bookings/${full.body.id}/status`).send({ status: "CONFIRMED" })).status).toBe(200);
+    expect(full.body.status).toBe("CONFIRMED"); // the amount received confirms it
   });
 
   it("refuses a received amount above the final price, with no booking left behind", async () => {
@@ -151,7 +151,6 @@ describe("manual booking with a manual discount", () => {
   it("monthly report: booking value is the final price, discounts are reported apart", async () => {
     const { agent } = await signedIn(app);
     const r = await manual(agent, { manualDiscount: { type: "FINAL_PRICE", value: 1000 }, initialPayment: { amount: 1000, method: "CASH" }, securityDeposit: 0 });
-    await agent.post(`/api/admin/bookings/${r.body.id}/status`).send({ status: "CONFIRMED" }).expect(200);
     const rep = (await agent.get(`/api/admin/reports/monthly?year=${THU.slice(0, 4)}`)).body;
     const m = rep.months.find((x: { month: string }) => x.month === THU.slice(0, 7));
     expect(m).toMatchObject({ bookings: 1, bookingValue: 1000, discounts: 200 });

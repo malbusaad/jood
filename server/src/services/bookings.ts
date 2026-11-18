@@ -515,6 +515,36 @@ export async function changeStatus(db: PrismaClient, req: Request, id: string, t
   });
 }
 
+/**
+ * «تسجيل العربون وتأكيد الحجز» — the owner's simple flow: whatever booking money has been received
+ * (the deposit, or all of it) confirms the booking at once. The rest of the booking amount — and the
+ * security deposit, if not paid yet — become due before check-in (balance reminder as usual).
+ * With `payment`, that amount is recorded first (never more than what is still owed).
+ */
+export async function confirmWithDeposit(db: PrismaClient, req: Request, id: string, payment: { amount: number; method: PaymentMethod } | null) {
+  const before = await db.booking.findUnique({ where: { id }, select: { status: true } });
+  if (!before) throw new HttpError(404, "الحجز غير موجود");
+  if (!TRANSITIONS[before.status].includes("CONFIRMED")) throw new HttpError(409, `لا يمكن تأكيد حجز «${STATUS_LABELS[before.status]}»`);
+  if (payment) await recordVerifiedPayment(db, req, id, { method: payment.method, purpose: "BOOKING", amount: payment.amount, note: "العربون" });
+
+  const b = await db.booking.findUniqueOrThrow({ where: { id }, include: { payments: true } });
+  const paid = acceptedPaid(b.payments);
+  if (!paid.greaterThan(0)) throw new HttpError(400, "سجّل مبلغ العربون أولًا");
+  const sum = paymentSummary(b);
+  const full = paid.greaterThanOrEqualTo(b.totalAmount);
+  await db.booking.update({
+    where: { id },
+    data: {
+      legacyPayment: false,
+      paymentPlan: full ? "FULL" : "DEPOSIT",
+      upfrontAmount: full ? b.totalAmount : paid,
+      // A security deposit not paid yet is due before check-in, so it never blocks the confirmation.
+      ...(Number(sum.depositRemaining) > 0 ? { depositTiming: "BEFORE_CHECKIN" as const } : {}),
+    },
+  });
+  return changeStatus(db, req, id, "CONFIRMED", null);
+}
+
 export interface PaymentInput {
   method: PaymentMethod;
   /** مبلغ الحجز أو التأمين — الافتراضي مبلغ الحجز */

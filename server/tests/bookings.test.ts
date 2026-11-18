@@ -423,7 +423,7 @@ describe("contract", () => {
     expect(text).toContain("2,400 ريال"); // total payable incl. deposit
     expect(text).toContain("2:00 ظهرًا");
     expect(text).toContain("72 ساعة");
-    expect(text).toContain("«موافق»");
+    expect(text).toContain("يُعد تحويله العربون أو مبلغ الحجز موافقةً منه");
     expect(text).not.toMatch(/\{\{/);
     expect(text).not.toContain("اسم المالك");
     expect(c.blocks[0]).toEqual({ type: "title", text: "عقد حجز استراحة الجود" });
