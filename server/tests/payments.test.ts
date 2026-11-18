@@ -273,3 +273,52 @@ describe("one-tap confirm («استلمت المبلغ — أكّد الحجز»
     expect((await agent.post(`/api/admin/bookings/${booking.id}/quick-confirm`).send({ method: "CASH" })).status).toBe(409); // already confirmed
   });
 });
+
+describe("«تسجيل العربون وتأكيد الحجز»", () => {
+  it("records the deposit received and confirms; the rest and the security deposit are due before check-in", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book(); // website request: full payment, security deposit with it
+    const r = await agent.post(`/api/admin/bookings/${booking.id}/deposit-confirm`).send({ amount: 300, method: "BANK_TRANSFER" });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.status).toBe("CONFIRMED");
+    const d = await detail(agent, booking.id);
+    expect(d.payment).toMatchObject({ plan: "DEPOSIT", upfrontAmount: "300.00", bookingPaid: "300.00", bookingRemaining: "650.00", depositTiming: "BEFORE_CHECKIN", canConfirm: true, fullySettled: false });
+    expect(d.payments).toHaveLength(1);
+    expect(d.payments[0]).toMatchObject({ purpose: "BOOKING", status: "ACCEPTED", note: "العربون" });
+    // Only once: a confirmed booking is not confirmed again.
+    expect((await agent.post(`/api/admin/bookings/${booking.id}/deposit-confirm`).send({ amount: 100, method: "CASH" })).status).toBe(409);
+  });
+
+  it("the whole amount confirms with the full plan; more than the booking amount is refused and nothing changes", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book();
+    expect((await agent.post(`/api/admin/bookings/${booking.id}/deposit-confirm`).send({ amount: 951, method: "CASH" })).status).toBe(400);
+    expect((await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe("NEW");
+    expect(await db.payment.count()).toBe(0);
+    const r = await agent.post(`/api/admin/bookings/${booking.id}/deposit-confirm`).send({ amount: 950, method: "CASH" });
+    expect(r.body.status).toBe("CONFIRMED");
+    expect((await detail(agent, booking.id)).payment).toMatchObject({ plan: "FULL", bookingRemaining: "0.00" });
+  });
+
+  it("confirms with money already recorded (no new amount); refuses when nothing is recorded", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book();
+    expect((await agent.post(`/api/admin/bookings/${booking.id}/deposit-confirm`).send({})).status).toBe(400);
+    await pay(agent, booking.id, 200).expect(201);
+    const r = await agent.post(`/api/admin/bookings/${booking.id}/deposit-confirm`).send({});
+    expect(r.body.status).toBe("CONFIRMED");
+    expect(await db.payment.count()).toBe(1);
+  });
+
+  it("a manual booking with a deposit received is saved confirmed", async () => {
+    const { agent } = await signedIn(app);
+    const full = await fullResource();
+    const r = await agent.post("/api/admin/bookings").send({ resourceIds: [full.id], startDate: SUN, nights: 1, name: "ضيف العربون", phone: "0551239999", channel: "MANUAL", initialPayment: { amount: 400, method: "CASH" } });
+    expect(r.status).toBe(201);
+    expect(r.body.status).toBe("CONFIRMED");
+    expect((await detail(agent, r.body.id)).payment).toMatchObject({ plan: "DEPOSIT", bookingPaid: "400.00", bookingRemaining: "550.00" });
+    // Without a deposit it waits as before.
+    const w = await agent.post("/api/admin/bookings").send({ resourceIds: [full.id], startDate: addDays(SUN, 1), nights: 1, name: "ضيف بلا عربون", phone: "0551238888", channel: "MANUAL" });
+    expect(w.body.status).not.toBe("CONFIRMED");
+  });
+});

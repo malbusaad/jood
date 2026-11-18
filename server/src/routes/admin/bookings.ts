@@ -12,6 +12,7 @@ import {
   acceptPendingPayment,
   acceptedPaid,
   changeStatus,
+  confirmWithDeposit,
   createBooking,
   editBooking,
   evaluateSelection,
@@ -212,6 +213,12 @@ export function bookingsRouter(
       },
       { req, whatsapp: opts.whatsapp, secretBox: opts.secretBox },
     );
+    // A deposit received when recording the booking confirms it straight away.
+    if (input.initialPayment) {
+      const confirmed = await confirmWithDeposit(db, req, booking.id, null);
+      await afterStatus(req, booking.id, "CONFIRMED", confirmed.reference);
+      return void res.status(201).json(confirmed);
+    }
     res.status(201).json(booking);
   });
 
@@ -263,6 +270,19 @@ export function bookingsRouter(
    * (the up-front booking part, plus the security deposit when the guest chose to pay it with it)
    * and confirms. Only for money the owner has actually received.
    */
+  /** «تسجيل العربون وتأكيد الحجز»: records the deposit received and confirms the booking. */
+  router.post("/:id/deposit-confirm", async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    const input = parse(
+      // Without an amount: confirm with the booking money already recorded (e.g. a reported payment you accepted).
+      z.object({ amount: z.number().positive().max(1_000_000).multipleOf(0.01).optional(), method: z.enum(["BANK_TRANSFER", "GATHERN", "CASH"]).default("BANK_TRANSFER") }),
+      req.body,
+    );
+    const updated = await confirmWithDeposit(db, req, id, input.amount ? { amount: input.amount, method: input.method } : null);
+    await afterStatus(req, id, "CONFIRMED", updated.reference);
+    res.json(updated);
+  });
+
   router.post("/:id/quick-confirm", async (req, res) => {
     const { id } = parse(uuidParam, req.params);
     const { method } = parse(z.object({ method: z.enum(["BANK_TRANSFER", "GATHERN", "CASH"]) }), req.body);

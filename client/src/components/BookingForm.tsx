@@ -468,7 +468,7 @@ function Receipt({ receipt, phone }: { receipt: BookingReceipt; phone: string })
       {receipt.bank && (
         <div className="mt-6">
           <h3 className="font-display text-lg font-semibold text-jood-green">بيانات التحويل البنكي</h3>
-          <p className="mt-1 text-sm text-jood-ink/70">حوّل المبلغ بعد استلام العقد وموافقتك عليه.</p>
+          <p className="mt-1 text-sm text-jood-ink/70">حوّل العربون بعد استلام العقد، ويتأكد حجزك بعد وصوله.</p>
           <dl className="mt-3 grid gap-2 text-sm">
             {receipt.bank.bankName && <div className="flex justify-between gap-4"><dt>البنك</dt><dd>{receipt.bank.bankName}</dd></div>}
             {receipt.bank.accountHolder && <div className="flex justify-between gap-4"><dt>اسم صاحب الحساب</dt><dd>{receipt.bank.accountHolder}</dd></div>}

@@ -370,7 +370,7 @@ describe("door codes for bookings confirmed without the button (e.g. imported re
       initialPayment: { amount: 1900, method: "CASH" },
     });
     expect(r.status, JSON.stringify(r.body)).toBe(201);
-    await confirm(agent, r.body.id).expect(200);
+    expect(r.body.status).toBe("CONFIRMED"); // confirmed by the amount received
     expect(lock.codes.size).toBe(2);
     const e = await agent.post(`/api/admin/bookings/${r.body.id}/edit`).send({ dates: [addDays(s1, 1)] });
     expect(e.status, JSON.stringify(e.body)).toBe(200);

@@ -85,7 +85,8 @@ describe("separate days in one manual booking", () => {
 describe("editing a booking (confirmed included)", () => {
   async function confirmed(agent: Agent) {
     const b = await manual(agent, { initialPayment: { amount: 950, method: "CASH" } });
-    await agent.post(`/api/admin/bookings/${b.id}/status`).send({ status: "CONFIRMED" }).expect(200);
+    // A deposit recorded with the booking confirms it straight away.
+    expect((await db.booking.findUniqueOrThrow({ where: { id: b.id } })).status).toBe("CONFIRMED");
     return b;
   }
 

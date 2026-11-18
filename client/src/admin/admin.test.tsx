@@ -104,21 +104,29 @@ describe("booking detail", () => {
   it("offers a WhatsApp message with the booking details and the contract request", async () => {
     mockAdminApi({ "GET /api/admin/bookings/b1": () => [200, booking()] }, OWNER);
     renderAt("/admin/bookings/b1");
-    const link = await screen.findByRole("link", { name: /أرسل العقد عبر واتساب/ });
+    const link = await screen.findByRole("link", { name: /أرسل العقد وطلب العربون عبر واتساب/ });
     const href = decodeURIComponent(link.getAttribute("href")!);
     expect(href).toMatch(/^https:\/\/wa\.me\/966501234567\?text=/);
     expect(href).toContain("JD-000007");
     expect(href).toContain("1,200 ريال");
     expect(href).toContain("500 ريال");
-    expect(href).toContain("«موافق»");
+    expect(href).toContain("لتأكيد الحجز نرجو تحويل مبلغ الحجز 1,200 ريال");
+    expect(href).not.toContain("«موافق»");
     expect(screen.getByRole("link", { name: /عرض العقد وتنزيله PDF/ })).toHaveAttribute("href", "/admin/bookings/b1/contract");
   });
 
-  it("keeps «تأكيد الحجز» disabled until verified payments cover the booking amount", async () => {
-    mockAdminApi({ "GET /api/admin/bookings/b1": () => [200, booking()] }, OWNER);
+  it("confirms by recording the deposit received — one amount, one button", async () => {
+    const calls = mockAdminApi({ "GET /api/admin/bookings/b1": () => [200, booking()], "POST /api/admin/bookings/b1/deposit-confirm": () => [200, {}] }, OWNER);
     renderAt("/admin/bookings/b1");
-    expect(await screen.findByRole("button", { name: "تأكيد الحجز" })).toBeDisabled();
-    expect(screen.getByText(/للتأكيد: سجّل دفعات متحقق منها/)).toBeInTheDocument();
+    const save = await screen.findByRole("button", { name: "تسجيل العربون وتأكيد الحجز" });
+    expect(save).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "تأكيد الحجز" })).toBeNull(); // no separate confirm button
+    fireEvent.change(screen.getByLabelText("مبلغ العربون المستلم"), { target: { value: "2000" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("أكبر من المتبقي");
+    fireEvent.click(screen.getByRole("button", { name: /النصف 600/ }));
+    expect(screen.getByText(/المتبقي بعده 600 ريال يُدفع قبل الدخول/)).toBeInTheDocument();
+    fireEvent.click(save);
+    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/deposit-confirm"))?.body).toEqual({ amount: 600, method: "BANK_TRANSFER" }));
   });
 
   it("records a verified payment and moves the booking along", async () => {
@@ -139,12 +147,10 @@ describe("booking detail", () => {
       OWNER,
     );
     renderAt("/admin/bookings/b1");
+    // Detailed payment recording is still there, folded away.
     fireEvent.change(await screen.findByLabelText("المبلغ (ريال)"), { target: { value: "1200" } });
     fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفعة" }));
-    const confirmBtn = await screen.findByRole("button", { name: "تأكيد الحجز" });
-    await waitFor(() => expect(confirmBtn).toBeEnabled());
-    fireEvent.click(confirmBtn);
-    await waitFor(() => expect(calls.some((c) => c.path === "/api/admin/bookings/b1/status" && (c.body as { status: string }).status === "CONFIRMED")).toBe(true));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/admin/bookings/b1/payments")).toBe(true));
     expect(calls.find((c) => c.path === "/api/admin/bookings/b1/payments")!.body).toMatchObject({ method: "BANK_TRANSFER", amount: 1200 });
   });
 
@@ -156,8 +162,9 @@ describe("booking detail", () => {
       },
       OWNER,
     );
+    vi.stubGlobal("confirm", () => true);
     renderAt("/admin/bookings/b1");
-    fireEvent.click(await screen.findByRole("button", { name: /تم التواصل — بانتظار الدفع/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "إلغاء الحجز" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("لا يمكن تغيير الحالة");
   });
 });
@@ -452,7 +459,7 @@ describe("booking payments: deposit plan, security deposit and refunds", () => {
     expect(within(box).getByText("التأمين (قبل الدخول)")).toBeInTheDocument();
     expect(within(box).getByText("غير مدفوع")).toBeInTheDocument();
     expect(within(box).getByText("مخفي حتى اكتمال السداد")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "تأكيد الحجز" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /تأكيد الحجز بالمبلغ المسجل \(600 ريال\)/ })).toBeEnabled();
   });
 
   it("records a security deposit payment in cash, and a refund as a new entry", async () => {
@@ -695,26 +702,18 @@ describe("photos and video", () => {
 });
 
 describe("faster admin work", () => {
-  it("confirms in one tap with the exact amount due", async () => {
-    const summary = {
-      plan: "DEPOSIT", depositTiming: "WITH_FIRST_PAYMENT", legacy: false, bookingTotal: "1200.00", upfrontAmount: "600.00",
-      bookingPaid: "0.00", bookingRefunded: "0.00", bookingRemaining: "1200.00", upfrontRemaining: "600.00",
-      securityDeposit: "500.00", depositPaid: "0.00", depositRefunded: "0.00", depositRemaining: "500.00", depositStatus: "UNPAID",
-      dueToConfirm: "1100.00", canConfirm: false, fullySettled: false, balanceDueAt: null,
-    } as const;
+  it("confirms with money already recorded, without typing it again", async () => {
     const calls = mockAdminApi(
       {
-        "GET /api/admin/bookings/b1": () => [200, booking({ payment: { ...summary } })],
-        "POST /api/admin/bookings/b1/quick-confirm": () => [200, {}],
+        "GET /api/admin/bookings/b1": () => [200, booking({ paid: "300.00", channel: "GATHERN" })],
+        "POST /api/admin/bookings/b1/deposit-confirm": () => [200, {}],
       },
       OWNER,
     );
-    vi.stubGlobal("confirm", () => true);
     renderAt("/admin/bookings/b1");
-    expect(await screen.findByText(/إذا وصلك المطلوب للتأكيد \(1,100 ريال، يشمل التأمين\)/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("طريقة الاستلام"), { target: { value: "CASH" } });
-    fireEvent.click(screen.getByRole("button", { name: "استلمت المبلغ — أكّد الحجز" }));
-    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/quick-confirm"))?.body).toEqual({ method: "CASH" }));
+    expect(await screen.findByLabelText("طريقة الاستلام")).toHaveValue("GATHERN"); // Gathern bookings default to Gathern
+    fireEvent.click(screen.getByRole("button", { name: /تأكيد الحجز بالمبلغ المسجل \(300 ريال\)/ }));
+    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/deposit-confirm"))?.body).toEqual({}));
   });
 
   it("groups the admin menu and offers many icons for amenities", async () => {
@@ -834,7 +833,8 @@ describe("manual booking: previous customers suggested while typing", () => {
     expect(screen.getByLabelText("السعر النهائي")).toHaveTextContent("950");
     const summary = screen.getByLabelText("ملخص الحجز");
     expect(summary).toHaveTextContent("لا يوجد");
-    expect(summary).toHaveTextContent("غير مدفوع");
+    expect(summary).toHaveTextContent("لم يُستلم عربون");
+    expect(summary).toHaveTextContent("بانتظار العربون");
     fireEvent.click(screen.getByRole("button", { name: "حفظ الحجز" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings")).toBe(true));
     expect(posted(calls)).toMatchObject({ nights: 2, manualDiscount: null, initialPayment: null });
@@ -847,11 +847,12 @@ describe("manual booking: previous customers suggested while typing", () => {
     fireEvent.change(screen.getByLabelText("السعر النهائي (ريال)"), { target: { value: "800" } });
     expect(screen.getByRole("group", { name: "الخصم" })).toHaveTextContent("الخصم 150 ريال (15.79%)");
     expect(screen.getByLabelText("السعر النهائي")).toHaveTextContent("800");
-    fireEvent.change(screen.getByLabelText(/المبلغ المستلم الآن/), { target: { value: "300" } });
+    fireEvent.change(screen.getByLabelText(/العربون المستلم/), { target: { value: "300" } });
     fireEvent.change(screen.getByLabelText("طريقة الاستلام"), { target: { value: "CASH" } });
     const summary = screen.getByLabelText("ملخص الحجز");
     expect(summary).toHaveTextContent("سعر نهائي متفق عليه");
-    expect(summary).toHaveTextContent("مدفوع 300 ريال — المتبقي 500 ريال");
+    expect(summary).toHaveTextContent("عربون 300 ريال — المتبقي 500 ريال");
+    expect(summary).toHaveTextContent("حالة الحجز بعد الحفظمؤكد");
     fireEvent.click(screen.getByRole("button", { name: "حفظ الحجز" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/admin/bookings")).toBe(true));
     expect(posted(calls)).toMatchObject({ manualDiscount: { type: "FINAL_PRICE", value: 800 }, initialPayment: { amount: 300, method: "CASH" } });
@@ -871,7 +872,7 @@ describe("manual booking: previous customers suggested while typing", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("الخصم أكبر من السعر الأساسي");
     expect(screen.getByRole("button", { name: "حفظ الحجز" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("مبلغ الخصم (ريال)"), { target: { value: "100" } });
-    fireEvent.change(screen.getByLabelText(/المبلغ المستلم الآن/), { target: { value: "900" } });
+    fireEvent.change(screen.getByLabelText(/العربون المستلم/), { target: { value: "900" } });
     expect(screen.getByRole("alert")).toHaveTextContent("المبلغ المستلم أكبر من السعر النهائي");
     expect(screen.getByRole("button", { name: "حفظ الحجز" })).toBeDisabled();
   });
@@ -997,23 +998,19 @@ describe("contract and WhatsApp as one ordered flow", () => {
     };
   }
 
-  it("shows only the next step's button: send contract → guest agreed → transfer request", async () => {
+  it("three steps: send contract with the deposit request → record the deposit → confirmation message", async () => {
     const state = booking();
     const calls: { body?: unknown }[] = [];
     mockAdminApi(flowRoutes(state, calls), OWNER);
     renderAt("/admin/bookings/b1");
     const steps = await screen.findByRole("list", { name: "خطوات العقد والتواصل" });
-    expect(within(steps).getAllByRole("link")).toHaveLength(1);
-    expect(within(steps).queryByRole("link", { name: /أرسل طلب التحويل/ })).toBeNull();
+    expect(within(steps).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(steps).queryByText(/موافق/)).toBeNull();
     expect(within(steps).queryByRole("link", { name: /أرسل تأكيد الحجز/ })).toBeNull();
     // Opening the contract message marks it as sent.
-    fireEvent.click(within(steps).getByRole("link", { name: /أرسل العقد عبر واتساب/ }));
+    fireEvent.click(within(steps).getByRole("link", { name: /أرسل العقد وطلب العربون/ }));
     await waitFor(() => expect(calls[0]?.body).toEqual({ contractSent: true }));
-    fireEvent.click(await within(steps).findByRole("button", { name: "الضيف ردّ بـ «موافق»" }));
-    await waitFor(() => expect(calls[1]?.body).toEqual({ contractAccepted: true }));
-    const pay = await within(steps).findByRole("link", { name: /أرسل طلب التحويل/ });
-    expect(decodeURIComponent(pay.getAttribute("href")!)).toContain("1,700 ريال");
-    expect(within(steps).getAllByRole("link")).toHaveLength(1);
+    expect(within(steps).getByRole("group", { name: "تسجيل العربون" })).toBeInTheDocument();
   });
 
   it("offers the confirmation message only once the booking is confirmed", async () => {
