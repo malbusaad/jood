@@ -1,4 +1,3 @@
-import { Moon, Sun } from "lucide-react";
 import PendingNotice from "./PendingNotice";
 import { groupWeekdayPrices } from "../lib/pricing";
 
@@ -11,11 +10,9 @@ export default function PricingCards({ weekdayPrices, compact = false }: { weekd
   if (compact) {
     return (
       <ul aria-label="أسعار الاستراحة كاملة لليوم" className="flex flex-wrap gap-2">
-        {groups.map(({ label, price }, i) => {
-          const Icon = i === 0 ? Sun : Moon;
+        {groups.map(({ label, price }) => {
           return (
             <li key={label} className="flex items-center gap-2 rounded-full border border-jood-green/15 bg-white/80 px-4 py-2 text-sm">
-              <Icon aria-hidden className="size-4 text-jood-gold" />
               <span>{label}</span>
               <strong className="font-display text-base text-jood-green">{numberFmt.format(price)}</strong>
               <span className="text-jood-ink/60">ريال</span>
@@ -29,20 +26,19 @@ export default function PricingCards({ weekdayPrices, compact = false }: { weekd
 
   return (
     <div className={`grid gap-5 ${groups.length > 1 ? "sm:grid-cols-2" : ""}`}>
-      {groups.map(({ label, price }, i) => {
+      {groups.map(({ label, price }) => {
         const featured = groups.length > 1 && price === top;
-        const Icon = i === 0 ? Sun : Moon;
         return (
           <div
             key={label}
-            className={`relative overflow-hidden rounded-3xl p-8 ${
+            // An odd last card (e.g. a third price) takes the full row instead of leaving a gap.
+            className={`relative overflow-hidden rounded-3xl p-8 sm:[&:last-child:nth-child(odd)]:col-span-2 ${
               featured
                 ? "bg-jood-green text-jood-beige shadow-xl shadow-jood-green/20"
                 : "border border-jood-green/15 bg-white/80 text-jood-ink"
             }`}
           >
-            <Icon aria-hidden className="size-7 text-jood-gold" strokeWidth={1.25} />
-            <p className={`mt-6 text-sm ${featured ? "text-jood-beige/70" : "text-jood-ink/60"}`}>حجز الاستراحة كاملة</p>
+            <p className={`text-sm ${featured ? "text-jood-beige/70" : "text-jood-ink/60"}`}>حجز الاستراحة كاملة</p>
             <h3 className="mt-1 font-display text-xl font-semibold">{label}</h3>
             <p className="mt-6 flex items-baseline gap-2">
               <span className={`font-display text-5xl font-semibold ${featured ? "text-jood-gold" : "text-jood-green"}`}>
