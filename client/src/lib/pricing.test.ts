@@ -10,12 +10,16 @@ describe("groupWeekdayPrices", () => {
     ]);
   });
 
-  it("follows whatever the owner sets, including single days", () => {
-    expect(groupWeekdayPrices([900, 900, 900, 900, 1100, 1300, 1100]).map((g) => [g.label, g.price])).toEqual([
-      ["الأحد إلى الأربعاء", 900],
-      ["الخميس", 1100],
-      ["الجمعة", 1300],
-      ["السبت", 1100],
+  it("puts days with the same price in one box even when they are not next to each other", () => {
+    expect(groupWeekdayPrices([950, 950, 950, 950, 1100, 1200, 1100]).map((g) => [g.label, g.price])).toEqual([
+      ["الأحد إلى الأربعاء", 950],
+      ["الخميس والسبت", 1100],
+      ["الجمعة", 1200],
+    ]);
+    expect(groupWeekdayPrices([900, 900, 1000, 1000, 900, 1200, 900]).map((g) => g.label)).toEqual([
+      "الأحد إلى الإثنين، الخميس والسبت",
+      "الثلاثاء إلى الأربعاء",
+      "الجمعة",
     ]);
   });
 
