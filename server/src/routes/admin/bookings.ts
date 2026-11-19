@@ -445,6 +445,58 @@ export function bookingsRouter(
     res.status(201).json(await recordRefund(db, req, id, input));
   });
 
+  /**
+   * Correct a payment entered by mistake (owner only): change its amount, method or note. The booking
+   * money can never end up above the booking amount. The change is kept in the audit log.
+   */
+  router.patch("/payments/:id", requireRole("OWNER"), async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    const input = parse(
+      z.object({
+        amount: z.number().positive().max(1_000_000).multipleOf(0.01).optional(),
+        method: z.enum(["BANK_TRANSFER", "GATHERN", "CASH"]).optional(),
+        note: z.string().trim().max(500).nullable().optional(),
+      }),
+      req.body,
+    );
+    const updated = await db.$transaction(async (tx) => {
+      const p = await tx.payment.findUnique({ where: { id }, include: { booking: { include: { payments: true } } } });
+      if (!p) throw new HttpError(404, "الدفعة غير موجودة");
+      if (input.amount !== undefined && p.kind === "PAYMENT" && p.status !== "REJECTED") {
+        // The other entries for the same purpose, plus the new amount, must stay within what is owed.
+        const others = paymentSummary({ ...p.booking, payments: p.booking.payments.filter((x) => x.id !== id) });
+        const left = new Prisma.Decimal(p.purpose === "BOOKING" ? others.bookingRemaining : others.depositRemaining);
+        if (left.lessThan(input.amount)) throw new HttpError(400, `المبلغ أكبر من المتبقي ${p.purpose === "BOOKING" ? "من مبلغ الحجز" : "من التأمين"} (${left.toFixed(2)} ريال)`);
+      }
+      const u = await tx.payment.update({ where: { id }, data: { ...input } });
+      await audit(tx, req, {
+        action: "payment.update",
+        entityType: "booking",
+        entityId: p.bookingId,
+        details: { paymentId: id, before: { amount: p.amount.toFixed(2), method: p.method, note: p.note }, after: { amount: u.amount.toFixed(2), method: u.method, note: u.note } },
+      });
+      return u;
+    });
+    res.json(updated);
+  });
+
+  /** Delete a payment entered by mistake (owner only). A record of it stays in the audit log. */
+  router.delete("/payments/:id", requireRole("OWNER"), async (req, res) => {
+    const { id } = parse(uuidParam, req.params);
+    await db.$transaction(async (tx) => {
+      const p = await tx.payment.findUnique({ where: { id } });
+      if (!p) throw new HttpError(404, "الدفعة غير موجودة");
+      await tx.payment.delete({ where: { id } });
+      await audit(tx, req, {
+        action: "payment.delete",
+        entityType: "booking",
+        entityId: p.bookingId,
+        details: { paymentId: id, amount: p.amount.toFixed(2), kind: p.kind, purpose: p.purpose, method: p.method, status: p.status, note: p.note },
+      });
+    });
+    res.status(204).end();
+  });
+
   router.post("/payments/:id/accept", async (req, res) => {
     const { id } = parse(uuidParam, req.params);
     res.json(await acceptPendingPayment(db, req, id));

@@ -1076,3 +1076,31 @@ describe("expenses month range", () => {
     expect(monthEnd("2026-12")).toBe("2026-12-31");
   });
 });
+
+describe("correcting payments", () => {
+  const p = (id: string) => ({ id, method: "BANK_TRANSFER" as const, amount: "600.00", status: "ACCEPTED" as const, reportedAt: null, externalRef: null, note: null, verifiedAt: "2026-11-18T20:30:00Z", verifiedBy: { name: "المالك" }, createdAt: "2026-11-18T20:30:00Z" });
+  it("lets the owner delete a duplicate and fix an amount", async () => {
+    vi.stubGlobal("confirm", () => true);
+    const calls = mockAdminApi({
+      "GET /api/admin/bookings/b1": () => [200, booking({ status: "CONFIRMED", statusLabel: "مؤكد", paid: "1200.00", payments: [p("p1"), p("p2")], allowedTransitions: ["CANCELLED", "COMPLETED"] })],
+      "DELETE /api/admin/bookings/payments/p2": () => [204, null],
+      "PATCH /api/admin/bookings/payments/p1": () => [200, {}],
+    }, OWNER);
+    renderAt("/admin/bookings/b1");
+    const del = await screen.findAllByRole("button", { name: "حذف دفعة 600 ريال" });
+    fireEvent.click(del[1]!);
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.path === "/api/admin/bookings/payments/p2")).toBe(true));
+    fireEvent.click(screen.getAllByRole("button", { name: "تعديل دفعة 600 ريال" })[0]!);
+    fireEvent.change(screen.getByLabelText("المبلغ الصحيح"), { target: { value: "500" } });
+    fireEvent.change(screen.getByLabelText("طريقة الدفع"), { target: { value: "CASH" } });
+    fireEvent.click(within(screen.getByRole("group", { name: "تصحيح الدفعة" })).getByRole("button", { name: "حفظ" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "PATCH" && c.path === "/api/admin/bookings/payments/p1")?.body).toEqual({ amount: 500, method: "CASH" }));
+  });
+
+  it("is not offered to staff", async () => {
+    mockAdminApi({ "GET /api/admin/bookings/b1": () => [200, booking({ payments: [p("p1")], paid: "600.00" })] }, STAFF);
+    renderAt("/admin/bookings/b1");
+    await screen.findByText(/JD-000007/);
+    expect(screen.queryByRole("button", { name: /حذف دفعة/ })).toBeNull();
+  });
+});

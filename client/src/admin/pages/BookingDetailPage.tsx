@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { ArrowRight, Pencil, Printer } from "lucide-react";
+import { ArrowRight, Pencil, Printer, Trash2 } from "lucide-react";
 import type { BookingDetail, BookingStatus, PaymentMethod, PaymentPurpose } from "../types";
 import { ACTION_LABEL, CHANNEL, DEPOSIT_STATUS, DEPOSIT_TIMING, METHOD, PAYMENT_STATUS, PLAN, PURPOSE, STATUS } from "../labels";
 import { useUser } from "../auth";
@@ -16,6 +16,9 @@ const HISTORY_LABEL: Record<string, string> = {
   "booking.create": "أُنشئ الحجز",
   "booking.status": "تغيير الحالة",
   "booking.update": "تعديل",
+  "booking.edit": "تعديل الحجز (الأيام أو السعر)",
+  "payment.update": "تصحيح دفعة",
+  "payment.delete": "حذف دفعة",
 };
 
 export default function BookingDetailPage() {
@@ -27,6 +30,8 @@ export default function BookingDetailPage() {
   const [refund, setRefund] = useState<{ purpose: PaymentPurpose; method: PaymentMethod; amount: string; note: string } | null>(null);
   const owner = useUser().role === "OWNER";
   const [notes, setNotes] = useState<string | null>(null);
+  /** A payment being corrected (owner only). */
+  const [fix, setFix] = useState<{ id: string; amount: string; method: PaymentMethod } | null>(null);
 
   if (loading && !b) return <Loading />;
   if (!b) return <ErrorNote>{error ?? "الحجز غير موجود"}</ErrorNote>;
@@ -191,6 +196,28 @@ export default function BookingDetailPage() {
                         {p.note && ` · ${p.note}`}
                       </div>
                     </div>
+                    {owner && fix?.id !== p.id && (
+                      <div className="flex gap-1 print:hidden">
+                        <Button variant="ghost" aria-label={`تعديل دفعة ${money(p.amount)}`} onClick={() => setFix({ id: p.id, amount: String(Number(p.amount)), method: p.method })}><Pencil className="size-4" /></Button>
+                        <Button variant="ghost" aria-label={`حذف دفعة ${money(p.amount)}`} busy={m.busy} onClick={async () => {
+                          if (confirm(`حذف ${p.kind === "REFUND" ? "الاسترداد" : "الدفعة"} ${money(p.amount)}؟ يبقى سطر في سجل الحجز.`) && (await m.run(`/api/admin/bookings/payments/${p.id}`, "DELETE")) !== null) reload();
+                        }}><Trash2 className="size-4 text-red-700" /></Button>
+                      </div>
+                    )}
+                    {fix?.id === p.id && (
+                      <div className="flex w-full flex-wrap items-center gap-2 rounded-xl bg-jood-beige/60 p-2" role="group" aria-label="تصحيح الدفعة">
+                        <input type="number" min={0.01} step="0.01" inputMode="decimal" value={fix.amount} onChange={(e) => setFix({ ...fix, amount: e.target.value })} aria-label="المبلغ الصحيح" className={`${inputClass} w-32`} />
+                        <select value={fix.method} onChange={(e) => setFix({ ...fix, method: e.target.value as PaymentMethod })} aria-label="طريقة الدفع" className={`${inputClass} w-auto`}>
+                          <option value="BANK_TRANSFER">تحويل بنكي</option>
+                          <option value="CASH">نقدًا</option>
+                          <option value="GATHERN">جاذر إن</option>
+                        </select>
+                        <Button busy={m.busy} disabled={!(Number(fix.amount) > 0)} onClick={async () => {
+                          if (await m.run(`/api/admin/bookings/payments/${fix.id}`, "PATCH", { amount: Number(fix.amount), method: fix.method })) { setFix(null); reload(); }
+                        }}>حفظ</Button>
+                        <Button variant="ghost" onClick={() => setFix(null)}>إلغاء</Button>
+                      </div>
+                    )}
                     {p.status === "PENDING" && (
                       <div className="flex gap-2">
                         <Button variant="secondary" busy={m.busy} onClick={() => reviewPayment(p.id, "accept")}>وصل المبلغ</Button>

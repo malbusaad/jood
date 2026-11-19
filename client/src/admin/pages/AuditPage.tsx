@@ -28,6 +28,13 @@ const ACTIONS: Record<string, string> = {
   "booking.update": "تعديل حجز",
   "payment.verified": "التحقق من دفعة",
   "payment.rejected": "رفض دفعة",
+  "payment.update": "تصحيح دفعة",
+  "payment.delete": "حذف دفعة",
+  "booking.edit": "تعديل حجز (الأيام أو السعر)",
+  "booking.delete": "حذف حجز نهائيًا",
+  "expense.create": "إضافة مصروف",
+  "expense.update": "تعديل مصروف",
+  "expense.delete": "حذف مصروف",
   "guest.update": "تعديل بيانات ضيف",
 };
 

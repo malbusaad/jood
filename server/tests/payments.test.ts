@@ -322,3 +322,39 @@ describe("«تسجيل العربون وتأكيد الحجز»", () => {
     expect(w.body.status).not.toBe("CONFIRMED");
   });
 });
+
+describe("correcting a payment entered by mistake (owner)", () => {
+  it("deletes a duplicate and fixes an amount, keeping both in the booking's history", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book();
+    await pay(agent, booking.id, 400).expect(201);
+    await pay(agent, booking.id, 400).expect(201); // the same money entered twice
+    const [first, dup] = await db.payment.findMany({ where: { bookingId: booking.id }, orderBy: { createdAt: "asc" } });
+    expect((await detail(agent, booking.id)).paid).toBe("800.00");
+
+    await agent.delete(`/api/admin/bookings/payments/${dup!.id}`).expect(204);
+    expect((await detail(agent, booking.id)).paid).toBe("400.00");
+
+    // Fix the amount and method; never above what is owed for that purpose.
+    expect((await agent.patch(`/api/admin/bookings/payments/${first!.id}`).send({ amount: 960 })).status).toBe(400);
+    const u = await agent.patch(`/api/admin/bookings/payments/${first!.id}`).send({ amount: 500, method: "CASH" });
+    expect(u.status, JSON.stringify(u.body)).toBe(200);
+    const d = await detail(agent, booking.id);
+    expect(d.paid).toBe("500.00");
+    expect(d.payments[0]).toMatchObject({ amount: "500", method: "CASH" });
+    expect(d.history.map((h: { action: string }) => h.action)).toEqual(expect.arrayContaining(["payment.delete", "payment.update"]));
+    const upd = d.history.find((h: { action: string }) => h.action === "payment.update");
+    expect(upd.details).toMatchObject({ before: { amount: "400.00", method: "BANK_TRANSFER" }, after: { amount: "500.00", method: "CASH" } });
+  });
+
+  it("is for the owner only", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book();
+    await pay(agent, booking.id, 100).expect(201);
+    const p = await db.payment.findFirstOrThrow({ where: { bookingId: booking.id } });
+    const staff = (await signedIn(app, "STAFF")).agent;
+    expect((await staff.delete(`/api/admin/bookings/payments/${p.id}`)).status).toBe(403);
+    expect((await staff.patch(`/api/admin/bookings/payments/${p.id}`).send({ amount: 50 })).status).toBe(403);
+    expect(await db.payment.count()).toBe(1);
+  });
+});
