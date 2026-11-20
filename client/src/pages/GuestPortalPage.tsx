@@ -116,11 +116,17 @@ export default function GuestPortalPage() {
           ) : (
             <dl className="space-y-3">
               {p.codes.entryCode && (
-                <div className="flex items-center justify-between gap-3 rounded-2xl bg-jood-green p-4 text-jood-beige">
-                  <div>
-                    <dt className="text-xs text-jood-beige/70">رمز الدخول</dt>
-                    <dd dir="ltr" className="font-display text-3xl tracking-[0.2em] text-jood-gold">{p.codes.entryCode}</dd>
-                  </div>
+                <div className="rounded-2xl bg-jood-green p-4 text-jood-beige">
+                  <dt className="text-xs text-jood-beige/70">رمز الدخول</dt>
+                  <dd dir="ltr" className="mt-1 flex items-center gap-3" aria-label={`رمز الدخول ${p.codes.entryCode} ثم زر #`}>
+                    <span className="font-display text-3xl tracking-[0.2em] text-jood-gold">{p.codes.entryCode}</span>
+                    <span aria-hidden className="grid size-10 place-items-center rounded-lg border-2 border-jood-gold/70 font-display text-2xl text-jood-gold">#</span>
+                  </dd>
+                  <ol className="mt-3 list-inside list-decimal space-y-1 border-t border-white/10 pt-3 text-sm leading-6 text-jood-beige/85" aria-label="طريقة فتح الباب">
+                    <li>المس لوحة الأرقام في القفل حتى تضيء.</li>
+                    <li>اكتب الرقم <span dir="ltr" className="font-semibold text-jood-gold">{p.codes.entryCode}</span>.</li>
+                    <li>اضغط زر المربع <span className="font-semibold text-jood-gold">#</span> لفتح الباب.</li>
+                  </ol>
                 </div>
               )}
               {(p.codes.wifiName || p.codes.wifiPassword) && (
