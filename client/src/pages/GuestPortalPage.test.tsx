@@ -58,7 +58,8 @@ describe("guest portal page", () => {
 
   it("shows the entry code and Wi-Fi when available", async () => {
     renderPortal({ status: 200, body: { ...portal, codes: { entryCode: "4321", wifiName: "Jood", wifiPassword: "wifi-pass-1" }, codesAvailableOn: null } });
-    expect(await screen.findByText("4321")).toBeInTheDocument();
+    expect(await screen.findByLabelText("رمز الدخول 4321 ثم زر #")).toBeInTheDocument();
+    expect(screen.getByLabelText("طريقة فتح الباب")).toHaveTextContent("اضغط زر المربع # لفتح الباب");
     expect(screen.getByText("Jood")).toBeInTheDocument();
     expect(screen.getByText("wifi-pass-1")).toBeInTheDocument();
   });

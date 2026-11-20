@@ -84,7 +84,7 @@ export const DEFAULT_WA_MESSAGES: Record<WaKind, { title: string; text: string; 
   ACCESS: {
     title: "رمز الدخول",
     when: "قبل وقت الدخول بالساعات المحددة — فقط بعد اكتمال السداد",
-    text: "حياك الله {customer_name} في استراحة الجود. الدخول الساعة {check_in_time} والخروج الساعة {check_out_time}. رمز الدخول: {door_code}. الواي فاي: {wifi_name} — كلمة المرور: {wifi_password}. {arrival_instructions} الموقع: {location_url}",
+    text: "حياك الله {customer_name} في استراحة الجود. الدخول الساعة {check_in_time} والخروج الساعة {check_out_time}. رمز الدخول: {door_code} — المس لوحة القفل حتى تضيء، اكتب الرقم ثم اضغط زر المربع #. الواي فاي: {wifi_name} — كلمة المرور: {wifi_password}. {arrival_instructions} الموقع: {location_url}",
   },
   PAYMENT_PENDING: {
     title: "تنبيه عدم اكتمال السداد",
