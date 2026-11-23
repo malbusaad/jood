@@ -204,9 +204,24 @@ export function createApp({
 
   if (clientDistDir && fs.existsSync(path.join(clientDistDir, "index.html"))) {
     app.use(express.static(clientDistDir, { index: false, maxAge: "1h" }));
-    // SPA fallback: React Router handles client-side routes.
-    app.get(/.*/, (_req, res) => {
-      res.sendFile(path.join(clientDistDir, "index.html"));
+    // SPA fallback: React Router handles client-side routes. Link previews (WhatsApp, X, iMessage…) do
+    // not run the app, so the page itself carries the owner's uploaded icon in its share tags.
+    const indexHtml = fs.readFileSync(path.join(clientDistDir, "index.html"), "utf8");
+    let cached: { html: string; at: number } | null = null;
+    const page = async () => {
+      if (cached && Date.now() - cached.at < 60_000) return cached.html;
+      const [icon, logo] = await Promise.all([logoVersion(db, SITE_IMAGES.icon.key), logoVersion(db, SITE_IMAGES.logo.key)]);
+      cached = { html: withShareTags(indexHtml, publicBaseUrl, icon ? `/api/public/site-images/icon?v=${icon}` : logo ? `/api/public/site-images/logo?v=${logo}` : null), at: Date.now() };
+      return cached.html;
+    };
+    app.get(/.*/, async (_req, res, next) => {
+      try {
+        res.set("Content-Type", "text/html; charset=utf-8");
+        res.set("Cache-Control", "no-cache");
+        res.send(await page());
+      } catch (err) {
+        next(err);
+      }
     });
   }
 
@@ -229,4 +244,28 @@ export function createApp({
   app.use(errorHandler);
 
   return app;
+}
+
+/**
+ * Adds the share-preview tags (Open Graph) to the page: title, description and the site's icon as
+ * an absolute URL, and points the home-screen icon at the uploaded one too.
+ */
+export function withShareTags(html: string, baseUrl: string, imagePath: string | null) {
+  const base = baseUrl.replace(/\/$/, "");
+  const image = `${base}${imagePath ?? "/icon-512.png"}`;
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const title = /<title>([^<]*)<\/title>/.exec(html)?.[1] ?? "";
+  const description = /<meta name="description" content="([^"]*)"/.exec(html)?.[1] ?? "";
+  const tags = [
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="${esc(title)}" />`,
+    `<meta property="og:title" content="${esc(title)}" />`,
+    `<meta property="og:description" content="${description}" />`,
+    `<meta property="og:image" content="${esc(image)}" />`,
+    `<meta name="twitter:card" content="summary" />`,
+    `<meta name="twitter:image" content="${esc(image)}" />`,
+  ].join("\n    ");
+  let out = html.replace("</head>", `    ${tags}\n  </head>`);
+  if (imagePath) out = out.replace(/<link rel="apple-touch-icon" href="[^"]*" \/>/, `<link rel="apple-touch-icon" href="${esc(imagePath)}" />`);
+  return out;
 }
