@@ -8,7 +8,6 @@ import { formatDateAr } from "../../lib/format";
 import ContractFlowCard from "./ContractFlowCard";
 import DeleteBookingCard from "./DeleteBookingCard";
 import { DISCOUNT_LABEL, r2 } from "../manualDiscount";
-import GuestLinkCard from "./GuestLinkCard";
 import DoorCodeCard from "./DoorCodeCard";
 import { Button, Card, ErrorNote, Field, Loading, PageTitle, StatusBadge, dateTime, inputClass, money, nightsBetween, useApi, useMutation } from "../ui";
 
@@ -328,7 +327,6 @@ export default function BookingDetailPage() {
         <div className="space-y-5 print:hidden">
           <ContractFlowCard b={b} busy={m.busy} patch={patch} onChange={reload} />
 
-          <GuestLinkCard booking={b} onChange={reload} />
           <DoorCodeCard booking={b} onChange={reload} />
 
           {b.allowedTransitions.length > 0 && (
