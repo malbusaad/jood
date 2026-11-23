@@ -14,19 +14,31 @@ export function waMessages(b: BookingDetail) {
   const days = nightsBetween(b.startDate, b.endDate);
   const when = `${formatDateAr(b.startDate)}${days > 1 ? ` (${days} أيام)` : ""}`;
   const amounts = `مبلغ الحجز ${money(b.totalAmount)}${Number(b.depositAmount) > 0 ? ` + تأمين ${money(b.depositAmount)} يُسترد بعد المغادرة` : ""}`;
-  // What the guest is asked to transfer to confirm: the agreed deposit, or the booking amount.
-  const deposit = b.payment?.plan === "DEPOSIT" ? Number(b.payment.upfrontAmount) : null;
-  const ask = deposit ? `العربون ${money(deposit)}` : `مبلغ الحجز ${money(b.totalAmount)}`;
+  const total = Number(b.totalAmount);
+  // The deposit asked for: the agreed one if set, otherwise half the booking amount.
+  const deposit = b.payment?.plan === "DEPOSIT" ? Number(b.payment.upfrontAmount) : Math.round(total / 2);
+  const ps = b.payment;
+  const bookingLeft = Number(ps?.bookingRemaining ?? total - Number(b.paid));
+  const depositLeft = Number(ps?.depositRemaining ?? 0);
+  const leftParts = [
+    bookingLeft > 0 ? `المتبقي من مبلغ الحجز ${money(bookingLeft)}` : null,
+    depositLeft > 0 ? `التأمين ${money(depositLeft)} (يُسترد بعد المغادرة)` : null,
+  ].filter(Boolean);
   return [
     {
-      key: "contract",
-      label: "إرسال العقد وطلب العربون",
-      text: `مرحبًا ${name}، معك استراحة الجود بخصوص طلب الحجز رقم ${b.reference}.\n${what} — ${when}.\n${amounts}.\nأرفقت لك عقد الحجز للاطلاع. لتأكيد الحجز نرجو تحويل ${ask} وإرسال صورة الإيصال هنا، ويتأكد الحجز مباشرة بعد وصول المبلغ.`,
+      key: "deposit",
+      label: "المطالبة بدفع العربون",
+      text: `مرحبًا ${name}، معك استراحة الجود بخصوص طلب الحجز رقم ${b.reference}.\n${what} — ${when}.\n${amounts}.\nلتأكيد الحجز نرجو تحويل العربون ${money(deposit)} وإرسال صورة الإيصال هنا، ويتأكد الحجز مباشرة بعد وصوله.`,
     },
     {
-      key: "confirmed",
-      label: "تأكيد الحجز",
-      text: `تم تأكيد حجزك رقم ${b.reference} في استراحة الجود — ${when}. سعداء باستقبالك!`,
+      key: "contract",
+      label: "إرسال العقد",
+      text: `مرحبًا ${name}، وصلنا العربون لحجزك رقم ${b.reference} — ${when}، شكرًا لك.\nأرفقت لك عقد الحجز للاطلاع والاحتفاظ به.`,
+    },
+    {
+      key: "balance",
+      label: "المطالبة بالمتبقي والتأمين",
+      text: `مرحبًا ${name}، نذكّرك بسداد ${leftParts.join(" و")}${leftParts.length > 1 ? `، بإجمالي ${money(bookingLeft + depositLeft)}` : ""} لحجزك رقم ${b.reference} قبل موعد الدخول، وإرسال صورة الإيصال هنا. بعد وصوله يصلك رابط الدخول والتعليمات.`,
     },
   ];
 }
@@ -34,5 +46,5 @@ export function waMessages(b: BookingDetail) {
 /** Message carrying the guest's private portal link. */
 export function waPortalMessage(b: BookingDetail, url: string) {
   const name = b.guest.name.split(" ")[0];
-  return `أهلًا ${name}، تم تأكيد حجزك رقم ${b.reference} في استراحة الجود.\nهذا رابطك الخاص، وفيه تفاصيل الحجز والتعليمات، ويظهر فيه رمز الدخول والواي فاي يوم وصولك:\n${url}\nالرابط خاص بك، فلا تشاركه مع غيرك.`;
+  return `أهلًا ${name}، حياك الله في استراحة الجود.\nرقم حجزك ${b.reference}.\nهذا رابطك الخاص، وفيه تفاصيل الحجز والتعليمات، ويظهر فيه رمز الدخول والواي فاي يوم وصولك:\n${url}\nالرابط خاص بك، فلا تشاركه مع غيرك.`;
 }
