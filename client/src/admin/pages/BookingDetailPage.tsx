@@ -332,17 +332,16 @@ export default function BookingDetailPage() {
           {b.allowedTransitions.length > 0 && (
             <Card title="الإجراءات">
               <div className="flex flex-col gap-2">
-                {b.allowedTransitions.includes("CONFIRMED") && (
+                {b.status !== "COMPLETED" && b.allowedTransitions.includes("CONFIRMED") && (
                   <p className="text-xs text-jood-ink/60">لتأكيد الحجز: سجّل العربون في بطاقة «العقد والتواصل».</p>
                 )}
-                {/* Intermediate statuses are not needed in the simple flow: only «مكتمل» stays here. */}
-                {b.allowedTransitions
-                  .filter((s) => s === "COMPLETED")
-                  .map((s) => (
-                    <Button key={s} variant="secondary" busy={m.busy} onClick={() => setStatus(s)}>
-                      {ACTION_LABEL[s]}
-                    </Button>
-                  ))}
+                {/* «مكتمل» is set automatically after check-out; a booking marked so by mistake can come back. */}
+                {b.status === "COMPLETED" && owner && b.allowedTransitions.includes("CONFIRMED") && (
+                  <>
+                    <p className="text-xs text-jood-ink/60">يُعتبر الحجز مكتملًا تلقائيًا بعد يوم الخروج. إذا وُضع «مكتمل» بالخطأ قبل انتهاء الإقامة، أرجعه:</p>
+                    <Button variant="secondary" busy={m.busy} onClick={() => setStatus("CONFIRMED")}>إرجاع إلى مؤكد</Button>
+                  </>
+                )}
                 {(b.allowedTransitions.includes("CANCELLED") || b.allowedTransitions.includes("REJECTED")) && (
                   <div className="mt-2 border-t border-jood-green/10 pt-3">
                     <Field label="السبب (اختياري)">

@@ -8,7 +8,7 @@ import { processDueMessages } from "./services/waAutomation.js";
 import { ensureDoorCodes } from "./services/doorCodes.js";
 import { ensureRecurringExpenses } from "./services/expenses.js";
 import { webPushSend } from "./services/push.js";
-import { alertUnpaidBalances, expireStaleBookings } from "./services/bookings.js";
+import { alertUnpaidBalances, completeFinishedStays, expireStaleBookings } from "./services/bookings.js";
 import { ttlockClient, ttlockConfigFromEnv } from "./services/ttlock.js";
 import { makeSecretBox } from "./lib/secretBox.js";
 
@@ -44,6 +44,8 @@ const expiryTimer = setInterval(() => {
   expireStaleBookings(prisma).catch((err) => console.error("[expiry]", err instanceof Error ? err.message : err));
   // Alert the owner (once per booking) when the balance or deposit is still unpaid at the deadline.
   alertUnpaidBalances(prisma, whatsapp).catch((err) => console.error("[balance-alert]", err instanceof Error ? err.message : err));
+  // Stays that are over become «مكتمل» automatically.
+  completeFinishedStays(prisma).catch((err) => console.error("[complete]", err instanceof Error ? err.message : err));
 }, 5 * 60 * 1000);
 expiryTimer.unref();
 
