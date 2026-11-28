@@ -35,6 +35,8 @@ export default function ContractFlowCard({ b, busy, patch, onChange }: { b: Book
   const current = closed ? null : (steps.find((s) => !s.done)?.key ?? null);
   /** Steps the owner opened out of order (only the current step shows its buttons by default). */
   const [opened, setOpened] = useState<Key[]>([]);
+  /** A portal link just created: kept here so its «send» button survives the refresh that follows. */
+  const [issued, setIssued] = useState<{ url: string; expiresAt: string } | null>(null);
 
   const wa = (key: string, label: string, after?: () => void) =>
     phone ? (
@@ -69,7 +71,7 @@ export default function ContractFlowCard({ b, busy, patch, onChange }: { b: Book
           </>
         ) : null;
       case "portal":
-        return confirmed ? <PortalLink b={b} active={Boolean(activeLink)} onChange={onChange} /> : null;
+        return confirmed ? <PortalLink b={b} active={Boolean(activeLink)} issued={issued} onIssued={setIssued} onChange={onChange} /> : null;
     }
   }
 
@@ -79,7 +81,7 @@ export default function ContractFlowCard({ b, busy, patch, onChange }: { b: Book
         {steps.map((s, i) => {
           const isCurrent = s.key === current;
           // The deposit form stays visible until confirmation, so the deposit can be recorded whenever it arrives.
-          const show = isCurrent || opened.includes(s.key) || (s.key === "confirm" && canConfirm);
+          const show = isCurrent || opened.includes(s.key) || (s.key === "confirm" && canConfirm) || (s.key === "portal" && issued !== null);
           const act = closed || !show ? null : action(s.key);
           const canOpen = !closed && !show && action(s.key) !== null;
           return (
@@ -194,15 +196,20 @@ function BalanceForm({ b, onDone }: { b: BookingDetail; onDone: () => void }) {
 }
 
 /** The guest's private portal link: create it, then send it on WhatsApp (welcome, booking number, link). */
-function PortalLink({ b, active, onChange }: { b: BookingDetail; active: boolean; onChange: () => void }) {
+function PortalLink({ b, active, issued, onIssued, onChange }: {
+  b: BookingDetail;
+  active: boolean;
+  issued: { url: string; expiresAt: string } | null;
+  onIssued: (link: { url: string; expiresAt: string }) => void;
+  onChange: () => void;
+}) {
   const m = useMutation();
-  const [issued, setIssued] = useState<{ url: string; expiresAt: string } | null>(null);
 
   async function issue() {
     if (active && !confirm("سيتوقف الرابط الحالي ويُصدر رابط جديد. متابعة؟")) return;
     const r = await m.run<{ url: string; expiresAt: string }>(`/api/admin/bookings/${b.id}/guest-link`, "POST");
     if (r) {
-      setIssued(r);
+      onIssued(r);
       onChange();
     }
   }
