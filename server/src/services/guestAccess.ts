@@ -18,6 +18,7 @@ export function checkoutInstant(endDate: Date, checkOut: string): Date {
 export async function issueGuestLink(db: PrismaClient, req: Request, bookingId: string, publicBaseUrl: string) {
   const booking = await db.booking.findUnique({ where: { id: bookingId } });
   if (!booking) throw new HttpError(404, "الحجز غير موجود");
+  if (booking.status === "COMPLETED") throw new HttpError(409, "الحجز مُعلَّم «مكتمل»؛ إذا لم تنتهِ الإقامة اضغط «إرجاع إلى مؤكد» ثم أصدر الرابط");
   if (booking.status !== "CONFIRMED") throw new HttpError(409, "يُرسل رابط البوابة بعد تأكيد الحجز فقط");
 
   const { stay, guestPortal } = await getSettings(db, ["stay", "guestPortal"]);

@@ -1127,7 +1127,7 @@ describe("a booking marked «مكتمل» by mistake", () => {
       "POST /api/admin/bookings/b1/status": () => [200, {}],
     }, OWNER);
     const first = renderAt("/admin/bookings/b1");
-    fireEvent.click(await screen.findByRole("button", { name: "إرجاع إلى مؤكد" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "إرجاع إلى مؤكد" })).at(-1)!);
     await waitFor(() => expect(calls.find((c) => c.path.endsWith("/status"))?.body).toMatchObject({ status: "CONFIRMED" }));
     expect(screen.queryByRole("group", { name: "تسجيل العربون" })).toBeNull();
     first.unmount();
@@ -1165,5 +1165,20 @@ describe("portal link survives the refresh after creating it", () => {
     await waitFor(() => expect(within(screen.getByRole("list", { name: "خطوات العقد والتواصل" })).getAllByRole("listitem")[4]!.querySelector("svg.text-emerald-600")).not.toBeNull());
     expect(screen.getByRole("link", { name: /أرسل رابط البوابة عبر واتساب/ })).toBeInTheDocument();
     expect(decodeURIComponent(send.getAttribute("href")!)).toContain(url);
+  });
+});
+
+describe("booking marked «مكتمل» before its stay ended", () => {
+  it("shows «إرجاع إلى مؤكد» in the flow card and hides the step buttons until then", async () => {
+    const calls = mockAdminApi({
+      "GET /api/admin/bookings/b1": () => [200, booking({ status: "COMPLETED", statusLabel: "مكتمل", startDate: "2099-01-01T00:00:00.000Z", endDate: "2099-01-02T00:00:00.000Z", paid: "1200.00", allowedTransitions: ["CONFIRMED"] })],
+      "POST /api/admin/bookings/b1/status": () => [200, {}],
+    }, OWNER);
+    renderAt("/admin/bookings/b1");
+    const steps = await screen.findByRole("list", { name: "خطوات العقد والتواصل" });
+    expect(within(steps).queryAllByRole("button")).toHaveLength(0);
+    const banners = screen.getAllByRole("button", { name: "إرجاع إلى مؤكد" });
+    fireEvent.click(banners[0]!);
+    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/status"))?.body).toMatchObject({ status: "CONFIRMED" }));
   });
 });
