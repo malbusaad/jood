@@ -19,7 +19,7 @@ export default function ContractFlowCard({ b, busy, patch, onChange }: { b: Book
   const phone = b.guest.phone;
   const confirmed = b.status === "CONFIRMED" || b.status === "COMPLETED";
   const closed = ["CANCELLED", "REJECTED", "EXPIRED"].includes(b.status);
-  const canConfirm = b.allowedTransitions.includes("CONFIRMED");
+  const canConfirm = b.status !== "COMPLETED" && b.allowedTransitions.includes("CONFIRMED");
   const ps = b.payment;
   const settled = Boolean(ps?.fullySettled);
   const now = Date.now();

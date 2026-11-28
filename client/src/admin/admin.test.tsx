@@ -1119,3 +1119,22 @@ describe("correcting payments", () => {
     expect(screen.queryByRole("button", { name: /حذف دفعة/ })).toBeNull();
   });
 });
+
+describe("a booking marked «مكتمل» by mistake", () => {
+  it("offers «إرجاع إلى مؤكد» to the owner, and no «مكتمل» button on confirmed bookings", async () => {
+    const calls = mockAdminApi({
+      "GET /api/admin/bookings/b1": () => [200, booking({ status: "COMPLETED", statusLabel: "مكتمل", paid: "1200.00", allowedTransitions: ["CONFIRMED"] })],
+      "POST /api/admin/bookings/b1/status": () => [200, {}],
+    }, OWNER);
+    const first = renderAt("/admin/bookings/b1");
+    fireEvent.click(await screen.findByRole("button", { name: "إرجاع إلى مؤكد" }));
+    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/status"))?.body).toMatchObject({ status: "CONFIRMED" }));
+    expect(screen.queryByRole("group", { name: "تسجيل العربون" })).toBeNull();
+    first.unmount();
+
+    mockAdminApi({ "GET /api/admin/bookings/b1": () => [200, booking({ status: "CONFIRMED", paid: "1200.00", allowedTransitions: ["CANCELLED", "COMPLETED"] })] }, OWNER);
+    renderAt("/admin/bookings/b1");
+    await screen.findByRole("button", { name: "إلغاء الحجز" });
+    expect(screen.queryByRole("button", { name: /الإقامة مكتملة/ })).toBeNull();
+  });
+});

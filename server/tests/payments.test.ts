@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { db, fullResource, makeApp, resetDb, signedIn } from "./helpers.js";
 import { addDays, dayOfWeek, todayInRiyadh } from "../src/lib/dates.js";
-import { alertUnpaidBalances } from "../src/services/bookings.js";
+import { alertUnpaidBalances, completeFinishedStays } from "../src/services/bookings.js";
 import type { WhatsAppSender } from "../src/services/notifications.js";
 
 const app = makeApp({ bookingLimit: 100_000, codeCheckLimit: 100_000, publicBaseUrl: "https://jood.example" });
@@ -356,5 +356,44 @@ describe("correcting a payment entered by mistake (owner)", () => {
     expect((await staff.delete(`/api/admin/bookings/payments/${p.id}`)).status).toBe(403);
     expect((await staff.patch(`/api/admin/bookings/payments/${p.id}`).send({ amount: 50 })).status).toBe(403);
     expect(await db.payment.count()).toBe(1);
+  });
+});
+
+describe("«مكتمل» pressed by mistake", () => {
+  it("cannot be set before check-out day; a completed booking whose stay is not over goes back to confirmed and holds its days again", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book();
+    await agent.post(`/api/admin/bookings/${booking.id}/deposit-confirm`).send({ amount: 950, method: "CASH" }).expect(200);
+    expect((await agent.post(`/api/admin/bookings/${booking.id}/status`).send({ status: "COMPLETED" })).status).toBe(409);
+
+    // As if it had been marked completed by mistake (the old rule allowed it the day before).
+    await db.booking.update({ where: { id: booking.id }, data: { status: "COMPLETED" } });
+    expect(await db.bookingLock.count({ where: { bookingId: booking.id } })).toBe(0); // the days were freed
+    const r = await agent.post(`/api/admin/bookings/${booking.id}/status`).send({ status: "CONFIRMED" });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.status).toBe("CONFIRMED");
+    expect(await db.bookingLock.count({ where: { bookingId: booking.id } })).toBeGreaterThan(0);
+    // The portal link works again.
+    expect((await agent.post(`/api/admin/bookings/${booking.id}/guest-link`).send({})).status).toBe(201);
+  });
+
+  it("refuses to bring it back when someone else took the day meanwhile", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book();
+    await agent.post(`/api/admin/bookings/${booking.id}/deposit-confirm`).send({ amount: 950, method: "CASH" }).expect(200);
+    await db.booking.update({ where: { id: booking.id }, data: { status: "COMPLETED" } });
+    await book(); // the same Sunday, now free, booked by another guest
+    expect((await agent.post(`/api/admin/bookings/${booking.id}/status`).send({ status: "CONFIRMED" })).status).toBe(409);
+    expect((await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe("COMPLETED");
+  });
+
+  it("stays that are over become completed automatically; upcoming ones are untouched", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book();
+    await agent.post(`/api/admin/bookings/${booking.id}/deposit-confirm`).send({ amount: 950, method: "CASH" }).expect(200);
+    expect(await completeFinishedStays(db)).toBe(0);
+    await db.booking.update({ where: { id: booking.id }, data: { startDate: new Date("2020-01-01"), endDate: new Date("2020-01-02") } });
+    expect(await completeFinishedStays(db)).toBe(1);
+    expect((await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe("COMPLETED");
   });
 });

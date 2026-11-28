@@ -26,7 +26,8 @@ export const TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   CANCELLED: [],
   REJECTED: [],
   EXPIRED: [],
-  COMPLETED: [],
+  // A booking marked completed by mistake can be brought back while its stay has not ended.
+  COMPLETED: ["CONFIRMED"],
 };
 
 export const STATUS_LABELS: Record<BookingStatus, string> = {
@@ -330,6 +331,18 @@ export async function createBooking(
 }
 
 /** Moves unpaid requests past their payment deadline to EXPIRED (a trigger releases their days). */
+/**
+ * Confirmed bookings whose stay is over (the day after check-out) become «مكتمل» on their own, so
+ * the owner never has to mark them — and cannot mark one too early by mistake.
+ */
+export async function completeFinishedStays(db: PrismaClient) {
+  const { count } = await db.booking.updateMany({
+    where: { status: "CONFIRMED", endDate: { lt: fromIsoDate(todayInRiyadh()) } },
+    data: { status: "COMPLETED" },
+  });
+  return count;
+}
+
 export async function expireStaleBookings(db: Db) {
   const { count } = await db.booking.updateMany({
     where: { status: "AWAITING_PAYMENT", expiresAt: { lt: new Date() } },
@@ -457,6 +470,15 @@ export async function editBooking(db: PrismaClient, req: Request, id: string, in
 }
 
 export async function changeStatus(db: PrismaClient, req: Request, id: string, to: BookingStatus, reason?: string | null) {
+  try {
+    return await changeStatusTx(db, req, id, to, reason);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") throw new HttpError(409, "حُجز أحد أيام هذا الحجز لغيره، فلا يمكن إرجاعه");
+    throw err;
+  }
+}
+
+async function changeStatusTx(db: PrismaClient, req: Request, id: string, to: BookingStatus, reason?: string | null) {
   return db.$transaction(async (tx) => {
     const b = await lockBooking(tx, id);
     if (!TRANSITIONS[b.status].includes(to)) {
@@ -479,6 +501,13 @@ export async function changeStatus(db: PrismaClient, req: Request, id: string, t
       const resourceIds = [...new Set(b.items.map((i) => i.resourceId))];
       const dates = [...new Set(b.items.map((i) => toIsoDate(i.date)))];
       const keys = new Set([...(await lockKeysByResource(tx, resourceIds)).values()].flat());
+      if (b.status === "COMPLETED") {
+        // Back from «مكتمل» (pressed by mistake): its days were freed, so hold them again — if still free.
+        if (toIsoDate(b.endDate) < todayInRiyadh()) throw new HttpError(409, "انتهى موعد هذا الحجز");
+        await tx.booking.update({ where: { id }, data: { status: "CONFIRMED" } });
+        await tx.bookingLock.createMany({ data: [...keys].flatMap((key) => dates.map((d) => ({ key, date: fromIsoDate(d), bookingId: id }))) });
+        b.locks = [...keys].flatMap((key) => dates.map(() => ({ key })));
+      }
       if (b.locks.length < keys.size * dates.length) {
         throw new HttpError(409, "تغيّرت إعدادات الأجزاء منذ الطلب؛ راجع الإتاحة قبل التأكيد");
       }
@@ -495,7 +524,8 @@ export async function changeStatus(db: PrismaClient, req: Request, id: string, t
       // A cancelled booking's guest link stops working immediately.
       await tx.guestAccessToken.updateMany({ where: { bookingId: id, revokedAt: null }, data: { revokedAt: new Date() } });
     } else if (to === "COMPLETED") {
-      if (toIsoDate(b.endDate) > addDays(todayInRiyadh(), 1)) throw new HttpError(409, "لا يكتمل الحجز قبل انتهاء موعده");
+      // Only once the stay is over (from the check-out day) — never on the day it starts.
+      if (toIsoDate(b.endDate) > todayInRiyadh()) throw new HttpError(409, "لا يكتمل الحجز قبل يوم الخروج");
     } else if (to === "AWAITING_VERIFICATION") {
       data.expiresAt = null;
     }
