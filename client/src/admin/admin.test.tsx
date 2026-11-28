@@ -1138,3 +1138,32 @@ describe("a booking marked «مكتمل» by mistake", () => {
     expect(screen.queryByRole("button", { name: /الإقامة مكتملة/ })).toBeNull();
   });
 });
+
+describe("portal link survives the refresh after creating it", () => {
+  it("keeps «أرسل رابط البوابة» visible once the step turns done", async () => {
+    const url = `https://jood.example/g/${"q".repeat(43)}`;
+    // Everything before it is done (contract sent, fully paid), so the portal is the current step.
+    const settled = {
+      plan: "FULL", depositTiming: "WITH_FIRST_PAYMENT", legacy: false, bookingTotal: "1200.00", upfrontAmount: "1200.00",
+      bookingPaid: "1200.00", bookingRefunded: "0.00", bookingRemaining: "0.00", upfrontRemaining: "0.00",
+      securityDeposit: "500.00", depositPaid: "500.00", depositRefunded: "0.00", depositRemaining: "0.00", depositStatus: "PAID",
+      dueToConfirm: "0.00", canConfirm: true, fullySettled: true, balanceDueAt: null,
+    } as const;
+    let state = booking({ status: "CONFIRMED", paid: "1200.00", contractSentAt: "2026-11-27T10:00:00Z", payment: { ...settled }, allowedTransitions: ["CANCELLED"] });
+    mockAdminApi({
+      "GET /api/admin/bookings/b1": () => [200, state],
+      "POST /api/admin/bookings/b1/guest-link": () => {
+        // After issuing, the refreshed booking has an active link (the step is done).
+        state = { ...state, accessTokens: [{ id: "t9", createdAt: "2026-11-28T06:55:00Z", expiresAt: "2099-01-01T00:00:00Z", revokedAt: null, lastUsedAt: null }] };
+        return [201, { id: "t9", url, expiresAt: "2099-01-01T00:00:00Z" }];
+      },
+    }, OWNER);
+    renderAt("/admin/bookings/b1");
+    fireEvent.click(await screen.findByRole("button", { name: "إنشاء رابط البوابة" }));
+    const send = await screen.findByRole("link", { name: /أرسل رابط البوابة عبر واتساب/ });
+    // Let the refresh land (the step turns done, nothing is current any more): the button must stay.
+    await waitFor(() => expect(within(screen.getByRole("list", { name: "خطوات العقد والتواصل" })).getAllByRole("listitem")[4]!.querySelector("svg.text-emerald-600")).not.toBeNull());
+    expect(screen.getByRole("link", { name: /أرسل رابط البوابة عبر واتساب/ })).toBeInTheDocument();
+    expect(decodeURIComponent(send.getAttribute("href")!)).toContain(url);
+  });
+});
