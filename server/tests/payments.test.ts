@@ -377,6 +377,17 @@ describe("«مكتمل» pressed by mistake", () => {
     expect((await agent.post(`/api/admin/bookings/${booking.id}/guest-link`).send({})).status).toBe(201);
   });
 
+  it("brings it back even if the security deposit was never recorded (it was confirmed before)", async () => {
+    const { agent } = await signedIn(app);
+    const { booking } = await book(); // full plan, security deposit due with the first payment
+    await pay(agent, booking.id, 950).expect(201); // booking amount only — no security deposit
+    await db.booking.update({ where: { id: booking.id }, data: { status: "COMPLETED" } });
+    expect((await agent.post(`/api/admin/bookings/${booking.id}/guest-link`).send({})).body.error).toContain("إرجاع إلى مؤكد");
+    const r = await agent.post(`/api/admin/bookings/${booking.id}/status`).send({ status: "CONFIRMED" });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect((await agent.post(`/api/admin/bookings/${booking.id}/guest-link`).send({})).status).toBe(201);
+  });
+
   it("refuses to bring it back when someone else took the day meanwhile", async () => {
     const { agent } = await signedIn(app);
     const { booking } = await book();

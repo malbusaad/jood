@@ -491,7 +491,8 @@ async function changeStatusTx(db: PrismaClient, req: Request, id: string, to: Bo
       // Full plan: the whole booking amount. Deposit plan: the agreed up-front part. Plus the security
       // deposit when the guest chose to pay it with the first payment.
       const sum = paymentSummary(b);
-      if (!sum.canConfirm) {
+      // Back from «مكتمل» by mistake: it was already confirmed, so the payment rule is not asked again.
+      if (b.status !== "COMPLETED" && !sum.canConfirm) {
         const parts = [`المطلوب للتأكيد ${sum.dueToConfirm} ريال`];
         if (Number(sum.upfrontRemaining) > 0) parts.push(`من مبلغ الحجز ${sum.upfrontRemaining}`);
         if (!b.legacyPayment && b.depositTiming === "WITH_FIRST_PAYMENT" && Number(sum.depositRemaining) > 0) parts.push(`ومن التأمين ${sum.depositRemaining}`);

@@ -49,6 +49,7 @@ export default function ContractFlowCard({ b, busy, patch, onChange }: { b: Book
     );
 
   function action(key: Key) {
+    if (completedEarly) return null; // bring it back to «مؤكد» first (banner above)
     switch (key) {
       case "deposit":
         return !confirmed && Number(b.paid) === 0 ? wa("deposit", "أرسل طلب العربون عبر واتساب") : null;
@@ -75,8 +76,13 @@ export default function ContractFlowCard({ b, busy, patch, onChange }: { b: Book
     }
   }
 
+  // Marked «مكتمل» while the stay is not over (e.g. pressed by mistake): one tap brings it back.
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Riyadh" });
+  const completedEarly = b.status === "COMPLETED" && b.endDate.slice(0, 10) >= today && b.allowedTransitions.includes("CONFIRMED");
+
   return (
     <Card title="العقد والتواصل">
+      {completedEarly && <ReopenBanner id={b.id} onDone={onChange} />}
       <ol className="space-y-3" aria-label="خطوات العقد والتواصل">
         {steps.map((s, i) => {
           const isCurrent = s.key === current;
@@ -235,6 +241,20 @@ function PortalLink({ b, active, issued, onIssued, onChange }: {
           {active ? "إصدار رابط جديد" : "إنشاء رابط البوابة"}
         </Button>
       )}
+      <ErrorNote>{m.error}</ErrorNote>
+    </div>
+  );
+}
+
+/** «إرجاع إلى مؤكد» for a booking marked «مكتمل» before its stay ended. */
+function ReopenBanner({ id, onDone }: { id: string; onDone: () => void }) {
+  const m = useMutation();
+  return (
+    <div className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+      <p>هذا الحجز مُعلَّم «مكتمل» ولم تنتهِ إقامته بعد. أرجعه إلى «مؤكد» ليعمل رابط البوابة ورمز الباب.</p>
+      <Button className="mt-2 w-full" busy={m.busy} onClick={async () => { if (await m.run(`/api/admin/bookings/${id}/status`, "POST", { status: "CONFIRMED" })) onDone(); }}>
+        إرجاع إلى مؤكد
+      </Button>
       <ErrorNote>{m.error}</ErrorNote>
     </div>
   );
